@@ -10,9 +10,23 @@
 
 #include "mytypes.h"
 
+
+
 #define CS_DATA_LEN 512
 
+#define DEBUG
+
 /////////////////////////MACRO////////////////////////////
+#ifdef DEBUG
+#define PRINT(e) do{ 			\
+		printf("%s\n" , e); 			\
+}while(0)
+
+#else
+#define PRINT(e)
+#endif
+
+
 #define PAGE_SIZE 1024	/*内存页面大小*/
 
 /*
@@ -64,8 +78,8 @@ typedef struct{
  * 服务器进程之间交互的数据包
  */
 typedef struct{
-	int iclient_fd;	/*与客户端连接的socket fd*/
-	CSPACKAGE stcs_data;	/*读入或者发送的客户端数据包*/
+	int client_fd;	/*与客户端连接的socket fd*/
+	CSPACKAGE cs_data;	/*读入或者发送的客户端数据包*/
 }SSPACKAGE;
 
 

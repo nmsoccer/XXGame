@@ -14,4 +14,7 @@ typedef unsigned int u32;
 typedef unsigned long ul32;
 //typedef unsigned double u64;
 
+typedef unsigned char spin_lock_t;
+
+
 #endif /* MYTYPES_H_ */

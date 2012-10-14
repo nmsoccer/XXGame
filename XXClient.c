@@ -29,7 +29,6 @@ int main(int argc, char **argv)
     struct sockaddr_in servaddr;
     CSPACKAGE stcspackage;
 
-
     if (argc < 2) {
         printf("argc < 2!\n");
         return -1;

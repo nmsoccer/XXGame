@@ -102,9 +102,70 @@ int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *packa
 	}
 
 	/*使用channel发送*/
+	if(channel->head == channel->tail){	/*发送管道已满*/
+		if(channel->package_num > 0){
+		  	return -2;
+		}
+	}
+
+ 	/*将包拷入队列尾部*/
+	get_spin_lock(&channel->spin_lock);	/*上锁*/
+	memcpy(channel->tail , package , sizeof(SSPACKAGE));
+	channel->tail += sizeof(SSPACKAGE);
+	channel->package_num++;
+	drop_spin_lock(&channel->spin_lock);	/*解锁*/
+
+	return 0;
+
+}
+
+/*
+ * 通过BUS接收包
+ * @param recv_proc:接收进程标志
+ * @param send_proc: 发送进程标志
+ * @bus: 使用的BUS
+ * @package: 接收包缓冲区
+ * @return:
+ * 0:接收成功；
+ * -1：出现错误
+ * -2: BUS空
+ */
+int recv_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package){
+	bus_channel *channel = NULL;	/*接收管道*/
+
+	if(!bus || !package){
+		return -1;
+	}
+
+	/*检验BUS与收发进程ID是否一致*/
+	if(recv_proc == bus->udwproc_id_recv_ch1){	/*如果接收进程使用channel1，发送进程使用channel2*/
+		if(send_proc != bus->udwproc_id_recv_ch2){
+			return -1;
+		}
+		channel = &bus->channel_one;	/*接收进程使用channel1接收*/
+
+	}else if(recv_proc == bus->udwproc_id_recv_ch2){ /*如果接收进程使用channel2，发送进程使用channel1*/
+		if(send_proc != bus->udwproc_id_recv_ch1){
+			return -1;
+		}
+		channel = &bus->channel_two;	/*接收进程使用channel2接收*/
+	}else{
+		return -1;
+	}
+
+	/*使用channel发送*/
+	/*使用channel发送*/
+	if(channel->package_num == 0){		/*接收管道为空*/
+	  	return -2;
+	}
 
 
+ 	/*从队头取包*/
+	get_spin_lock(&channel->spin_lock);	/*上锁*/
+	memcpy(package ,  channel->head , sizeof(SSPACKAGE));
+	channel->head += sizeof(SSPACKAGE);
+	channel->package_num--;
+	drop_spin_lock(&channel->spin_lock);	/*解锁*/
 
-
-
+	return 0;
 }

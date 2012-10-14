@@ -41,29 +41,42 @@ void *connect_interface(void *arg);*/
 
 ///////////////////////////////////DATA STRUCTURE///////////////////////////////////////////
 /*
- * 服务器包队列节点。用于保存将要发送给客户端的数据包.关联到每一个客户端SOCK FD
+ * 数据包队列节点。用于保存将要发送给客户端的数据包.关联到每一个客户端SOCK FD
  */
-struct stsspackage_node{
-	struct stsspackage_node *pstnode_next;
-	SSPACKAGE stss_data;
+struct _cspackage_node{
+	struct _cspackage_node *node_next;
+	CSPACKAGE cs_data;
 };
+typedef struct _cspackage_node CSPACKAGE_NODE;
 
-typedef struct stsspackage_node SSPACKAGE_NODE;
-
-/*
- * 一个客户端的链接结构
- */
 typedef struct{
-	u8 ucnode_count;
-	SSPACKAGE_NODE stnode_head;
+	u8 recv_count;	/*接收队列里的包数目*/
+	u8 send_count;	/*发送队列里的包数目*/
+	CSPACKAGE_NODE *recv_head;	/*从客户端接收的包队列头；在BUS满时存储*/
+	CSPACKAGE_NODE *recv_tail;	/*从客户端接收的包队列尾*/
+	CSPACKAGE_NODE *send_head;	/*将要发送给客户端的包队列头；在不可写时存储*/
+	CSPACKAGE_NODE *send_tail;	/*将要发送给客户端的包队列尾*/
 }client_connect;
 
+typedef struct{
+	int max_active_fd;	/*有效的链接数量*/
+	int active_fds[MAX_CONNECT_CLIENTS];	/*记录有效的链接fd值*/
+	client_connect client_connects[MAX_CONNECT_CLIENTS];	/*每个fd对应的收发包链接缓冲区，定位数组为fd本身的值*/
+}CLIENT;
 
-///////////////////////////////////////////////DATA////////////////////////////////////////////
+///////////////////////////////////////////////LOCAL VAR////////////////////////////////////////////
 /*
  * 每个socket fd 对应一个成员。成员在数组的位置就是其fd值
  */
-static client_connect client_connects[MAX_CONNECT_CLIENTS];
+//static client_connect client_connects[MAX_CONNECT_CLIENTS];
+static CLIENT client;
+/*链接到logic_server的bus*/
+static bus_interface *bus_to_logic = NULL;
+
+/*connect_server的ID*/
+u8 connect_server_id;
+/*logic_server的ID*/
+u8 logic_server_id;
 
 //////////////////////////////////////////////FUNCTION/////////////////////////////////////
 /*
@@ -77,13 +90,31 @@ static int read_socket(int isock_fd , CSPACKAGE *pstcspackage);
 static int write_socket(int isock_fd , CSPACKAGE *pstcspackage);
 
 /*
+ * 发送某个具体fd的数据包队列
+ * relay local var: client
+ */
+static int send_to_client(int client_fd);
+
+/*
+ * 尽可能多地读取与connect_server链接的所有bus数据，并尽可能发送到对应的客户端；
+ *
+ */
+static int try_handle_buses(void){
+	return 0;
+}
+
+
+/*
+ * 关闭某个客户端需要清除起收发队列里的包
+ * relay local var: client
+ */
+static int close_client(int client_fd);
+
+/*
  * 处理信号函数
  */
 static void handle_signal(int sig_no);
 
-
-//////////////////////////////////////////////STATIC VAR///////////////////////////////////////
-static bus_interface *bus_to_logic = NULL;	/*链接到logic_server的bus*/
 
 ////////////////////////////////////////////DEFINE//////////////////////////////////////////////
 /*
@@ -94,6 +125,7 @@ int main(int argc , char **argv){
 	int iaccept_fd;	/*链接具体客户端的TCP套接字*/
 	int iepoll_fd;	/*epoll的文件描述符*/
 	int iactive_fds;	/*通过epoll活跃的fd数目*/
+	int handle_fd;	/*循环中处理的fd*/
 
 	struct sockaddr_in stserv_addr;
 	struct sockaddr_in stcli_addr;
@@ -102,14 +134,20 @@ int main(int argc , char **argv){
 	struct epoll_event stepoll_event;
 	struct epoll_event astepoll_events[MAX_CONNECT_CLIENTS + 1];	/*一个FD对应一个event*/
 
-	CSPACKAGE stcspackage_recv;
+	CSPACKAGE stcspackage_recv;	/*收发客户端的包*/
 	CSPACKAGE stcspackage_send;
+
+	SSPACKAGE sspackage_recv;	/*收发其他服务器进程的包*/
+	SSPACKAGE sspackage_send;
+
+//	CSPACKAGE_NODE *pstcspackage_node = NULL;
 
 	struct sigaction stsig_act;		/*信号动作变量*/
 
-	pthread_t tid = 0;	/*开启接口线程的线程ID*/
+//	pthread_t tid = 0;	/*开启接口线程的线程ID*/
 	int iRet = -1;
 	int i;
+
 
 	/*检测参数*/
 	if(argc < 2){
@@ -123,7 +161,6 @@ int main(int argc , char **argv){
 		log_error("Create connect server socket failed!");
 		return -1;
 	}
-
 	iaddr_len = sizeof(struct sockaddr_in);
 
 	/*Bind*/
@@ -155,10 +192,8 @@ int main(int argc , char **argv){
 	/*Listen*/
 	listen(iserv_fd , MAX_LISTEN_CLIENTS);
 
-	/*DEAL MISC*/
-	for(i=0; i<MAX_CONNECT_CLIENTS; i++){
-		client_connects[i].ucnode_count = 0;
-	}
+	/*初始化客户端链接*/
+	memset(&client , 0 , sizeof(CLIENT));
 
 	/*处理信号*/
 	memset(&stsig_act , 0 , sizeof(stsig_act));
@@ -170,12 +205,16 @@ int main(int argc , char **argv){
 		bus_to_logic = attach_bus(GAME_CONNECT_SERVER1 , GAME_LOGIC_SERVER1);
 
 		if(!bus_to_logic){
-			log_error("attach to logic failed!\n");
+			log_error("connect_server1: attach to logic failed!");
 			return -1;
 		}
+
+		connect_server_id =GAME_CONNECT_SERVER1;
+		logic_server_id = GAME_LOGIC_SERVER1;
 		printf("attach: %x %d vs %d\n" , bus_to_logic , bus_to_logic->udwproc_id_recv_ch1 , bus_to_logic->udwproc_id_recv_ch2);
 	}else{
-		printf("illegal param1:%s\n");
+		log_error("connect server1: illegal param1:");
+		log_error(argv[1]);
 		return -1;
 	}
 
@@ -195,99 +234,208 @@ int main(int argc , char **argv){
 				memset(&stcli_addr , 0 , sizeof(stcli_addr));
 				iaccept_fd = accept(iserv_fd , (struct sockaddr *)&stcli_addr , &iaddr_len);
 
-				printf("{}accept a new client: %d\n" , iaccept_fd);
+				printf("-----------accept a new client: %d\n" , iaccept_fd);
+				/*设置接收的socket属性*/
 				set_nonblock(iaccept_fd);	/*设置为非阻塞*/
+				set_sock_buff_size(iaccept_fd , 10 * sizeof(CSPACKAGE) , 5 * sizeof(CSPACKAGE));	/*设置socket缓冲区大小*/
+
+				/*将该socket加入client*/
+				client.active_fds[client.max_active_fd] = iaccept_fd;
+				client.max_active_fd++;
+
+				/*将该socket设置入epoll监视*/
 				stepoll_event.data.fd = iaccept_fd;
 				stepoll_event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
 				iRet = epoll_ctl(iepoll_fd ,  EPOLL_CTL_ADD , iaccept_fd , &stepoll_event);
 				if(iRet < 0){
-					log_error("accept failed!\n");
+					log_error("accept failed!");
 				}
 				continue;
 			}
 
 			/*断开链接*/
 			if(astepoll_events[i].events & EPOLLRDHUP){
-				printf("client exit!\n");
-				close(astepoll_events[i].data.fd);
+				PRINT("client exit!");
+				close_client(astepoll_events[i].data.fd);
 				continue;
 			}
 
 			/*可以读*/
 			if(astepoll_events[i].events & EPOLLIN){
-				/*read*/
-				memset(&stcspackage_recv , 0 , sizeof(CSPACKAGE));
-				read_socket(astepoll_events[i].data.fd , &stcspackage_recv);
+				handle_fd = astepoll_events[i].data.fd;
+				/*read client*/
+				memset(&sspackage_recv , 0 , sizeof(SSPACKAGE));
+				sspackage_recv.client_fd = handle_fd;
+				iRet = read_socket(handle_fd , &sspackage_recv.cs_data);
 
-				memset(&stcspackage_send , 0 , sizeof(CSPACKAGE));
-				strcpy(stcspackage_send.data.acdata , "GOOD MAN");
-				write_socket(astepoll_events[i].data.fd , &stcspackage_send);
-			}
+				if(iRet == sizeof(CSPACKAGE)){
+					PRINT(">>>read package!");
+				}else
+				if(iRet > 0){	/*读的数据小于一个包长*/
+					log_error("connect server: read bytes < CSPACKAGE!");
+				}else{	/*没有数据*/
+					log_error("connect server: nothing to read!");
+				}
 
-			/*可以写*/
-			if(astepoll_events[i].events & EPOLLOUT){
-				/*write*/
+				/*将读取到的包通过BUS发送给logic*/
+				iRet = send_bus(logic_server_id , connect_server_id , bus_to_logic , &sspackage_recv);/*BUS发送*/
+				if(iRet == 0){	/*发送成功*/
+					PRINT("connect server: send bus success!");
+				}else
+				if(iRet == -2){	/*BUS满*/
+					log_error("connect server: bus to logic full!");
+				}else
+				if(iRet == -1){	/*发送失败*/
+					log_error("connect server: send to logic failed!");
+				}
+
+				/*同时检测该fd是否有需要发的包*/
+				send_to_client(handle_fd);
 			}
 
 		}	/*end for*/
 
 		/*在处理了socket 接口之后的其他操作*/
-		printf("nice!\n");
+
+
 
 	}	/*end while*/
 
-
-//	pthread_join(tid , NULL);
 	return 0;
 }
 
 
 /*
  * 读取数据
+ * @return: -1 没有数据
+ * >0 返回读取的数据长度
  */
 static int read_socket(int isock_fd , CSPACKAGE *pstcspackage){
-	int inumber;
-
 	if(isock_fd < 0  || !pstcspackage){
 		return -1;
 	}
 
-	inumber = recv(isock_fd , pstcspackage , sizeof(CSPACKAGE) , 0);
-//	printf(">>>read %d  bytes ", inumber);
-	if(pstcspackage->uwproto_type == XX_PROTO_VALIDATE){
-		printf(">>>>%d read: prototype: %d name: %s\n" , isock_fd , pstcspackage->uwproto_type , pstcspackage->data.stplayer_info.szname );
-	}else{
-		printf(">>>>%d read: prototype: %d content: %s" , isock_fd , pstcspackage->uwproto_type , pstcspackage->data.acdata );
-	}
-
-
-	if(inumber == -1){
-	}
-	return 0;
+	return recv(isock_fd , pstcspackage , sizeof(CSPACKAGE) , 0);
 }
 
 /*
  * 发送数据
+ * @return: > 0发送的数据长度
+ * -1:发送失败
  */
 static int write_socket(int isock_fd , CSPACKAGE *pstcspackage){
-	int inumber;
-
 	if(isock_fd < 0  || !pstcspackage){
 		return -1;
 	}
 
-	inumber = send(isock_fd , pstcspackage, sizeof(CSPACKAGE) , 0);
-	printf("write %s packagelen:%d  \n\n:", pstcspackage->data.acdata , inumber);
-	return 0;
+	return send(isock_fd , pstcspackage, sizeof(CSPACKAGE) , 0);
 }
 
 /*
+ * 发送某个具体fd的数据包队列
+ * relay local var: client
+ */
+static int send_to_client(int client_fd){
+	CSPACKAGE_NODE *pstnode = NULL;
+	CSPACKAGE_NODE *pstnodetmp = NULL;
+	client_connect *pstconnect = NULL;	/*具体某个客户端链接*/
+
+	int iRet;
+
+	pstconnect = &client.client_connects[client_fd];
+	pstnode = pstconnect->send_head;
+	while(1){
+		if(pstnode == NULL){
+			break;
+		}
+
+		iRet = write_socket(client_fd , &pstnode->cs_data);
+		if(iRet == -1 || iRet != sizeof(CSPACKAGE)){	/*如果发送失败或者发送数据小于一个包长，则退出待以后重新发送*/
+			break;
+		}
+
+		pstconnect->send_count--;
+		pstnodetmp = pstnode;
+		pstnode = pstnode->node_next;
+		free(pstnodetmp);
+	}
+
+	/*调整connect的发送队列首尾指针*/
+	if(pstconnect->send_count == 0){	/*发送队列已空*/
+		pstconnect->send_head = NULL;
+		pstconnect->send_tail = NULL;
+	}else{	/*还有未发送的包*/
+		pstconnect->send_head = pstnode;
+	}
+
+	return 0;
+}
+
+
+/*
+ * 关闭某个客户端需要清除起收发队列里的包
+ * relay local var: client
+ */
+static int close_client(int client_fd){
+	client_connect *pstconnect = NULL;
+	CSPACKAGE_NODE *pstnode = NULL;
+	CSPACKAGE_NODE *pstnodetmp = NULL;
+	int i;
+
+	pstconnect = &client.client_connects[client_fd];
+	/*清除发送队列*/
+	pstnode = pstconnect->send_head;
+	while(1){
+		if(pstnode == NULL){
+			break;
+		}
+
+		pstnodetmp = pstnode;
+		pstnode = pstnode->node_next;
+		free(pstnodetmp);
+	}
+
+	/*清除接收队列*/
+	pstnode = pstconnect->recv_head;
+	while(1){
+		if(pstnode == NULL){
+			break;
+		}
+
+		pstnodetmp = pstnode;
+		pstnode = pstnode->node_next;
+		free(pstnodetmp);
+	}
+
+	memset(pstconnect , 0 , sizeof(client_connect));
+
+	/*更改激活的fd*/
+	close(client_fd);
+
+	for(i=0; i<client.max_active_fd; i++){
+		if(client.active_fds[i] == client_fd)
+			break;
+	}
+
+	for(; i<=client.max_active_fd - 1 - 1; i++){	/*激活数组前移*/
+		client.active_fds[i] = client.active_fds[i + 1];
+	}
+	client.active_fds[i] = 0;	/*设置数组最后一个为0*/
+
+	client.max_active_fd--;
+
+	return 0;
+}
+
+
+/*
  * 处理信号函数
+ * relay local var: bus_to_logic
  */
 static void handle_signal(int sig_no){
 	switch(sig_no){
 		case SIGINT:
-			printf("receive SIGINT,ready to exit...\n");
+			PRINT("receive SIGINT,ready to exit...");
 			if(bus_to_logic){
 				detach_bus(bus_to_logic);	/*脱离BUS*/
 			}

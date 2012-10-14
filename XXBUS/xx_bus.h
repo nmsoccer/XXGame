@@ -34,6 +34,7 @@ struct stbus_channel{
 	char *end_addr;		/*该管道结束地址*/
 	char *head;		/*队首地址，用于收包*/
 	char *tail;			/*队尾地址，用于发包*/
+	spin_lock_t spin_lock;	/*该channel的自旋锁*/
 };
 
 typedef struct stbus_channel bus_channel;
