@@ -1,6 +1,6 @@
 CC = gcc
 MAKE = make
-SUBDIR = XXCONNECT XXBUS
+SUBDIR = XXCONNECT XXBUS XXLOGIC
 OBJS = tool.o XXBUS/xx_bus.o
 FLAGS = -g -Wall
 INCLUDE = ..
