@@ -32,7 +32,7 @@ bus_interface *attach_bus(u8 proc1 , u8 proc2){
 		return NULL;
 	}
 
-	size = sizeof(bus_interface) + sizeof(SSPACKAGE) * PACKAGE_NR_CONN_LOG * 2;	/*双通道*/
+	size = sizeof(bus_interface);
 	if(size % PAGE_SIZE != 0){	/*必须是页面的整数倍*/
 		size = (size / PAGE_SIZE + 1) * PAGE_SIZE;
 	}
@@ -79,7 +79,9 @@ int detach_bus(bus_interface *bus){
  * -2: BUS满
  */
 int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package){
+//	PRINT("sending bus...");
 	bus_channel *channel = NULL;	/*发送管道*/
+	char *dest = 0xb784b4888;
 
 	if(!bus || !package){
 		return -1;
@@ -101,19 +103,22 @@ int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *packa
 		return -1;
 	}
 
+//	printf("c1:%x; c2:%x; connect:%x head\n" , &bus->channel_one , &bus->channel_two , channel);
 	/*使用channel发送*/
-	if(channel->head == channel->tail){	/*发送管道已满*/
-		if(channel->package_num > 0){
-		  	return -2;
-		}
+	if(channel->package_num == CHANNEL_MAX_PACKAGE){	/*发送管道已满*/
+		return -2;
 	}
 
  	/*将包拷入队列尾部*/
-	get_spin_lock(&channel->spin_lock);	/*上锁*/
-	memcpy(channel->tail , package , sizeof(SSPACKAGE));
-	channel->tail += sizeof(SSPACKAGE);
+	/*不用上锁的原因在于最后才增加包数量；如果提前增加包数量再拷贝包的话则可能出现当head与tail指向同一块区域时，
+	 * 读管道进程将读到一个空包
+	 */
+//	get_spin_lock(&channel->spin_lock);	/*上锁*/
+//	memcpy(channel->tail , "helloworld" , 9);
+	memcpy(&channel->data[channel->tail] , package , sizeof(SSPACKAGE));
+	channel->tail++;
 	channel->package_num++;
-	drop_spin_lock(&channel->spin_lock);	/*解锁*/
+//	drop_spin_lock(&channel->spin_lock);	/*解锁*/
 
 	return 0;
 
@@ -161,11 +166,14 @@ int recv_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *packa
 
 
  	/*从队头取包*/
-	get_spin_lock(&channel->spin_lock);	/*上锁*/
-	memcpy(package ,  channel->head , sizeof(SSPACKAGE));
-	channel->head += sizeof(SSPACKAGE);
+	/*不用上锁的原因在于最后才减少包数量；如果提前减少包数量再拷贝包的话则可能出现当head与tail指向同一块区域时，
+	 * 再读出该包之前写管道进程已经将其覆盖
+	 */
+//	get_spin_lock(&channel->spin_lock);	/*上锁*/
+	memcpy(package ,  &channel->data[channel->head] , sizeof(SSPACKAGE));
+	channel->head ++;
 	channel->package_num--;
-	drop_spin_lock(&channel->spin_lock);	/*解锁*/
+//	drop_spin_lock(&channel->spin_lock);	/*解锁*/
 
 	return 0;
 }

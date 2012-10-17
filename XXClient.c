@@ -69,14 +69,14 @@ void handle(int sockfd , char *str)
     int n;
     CSPACKAGE stcspackage;
 
-    memset(&stcspackage , 0 , sizeof(CSPACKAGE));	/*发送验证包*/
+    /*memset(&stcspackage , 0 , sizeof(CSPACKAGE));	/*发送验证包
     stcspackage.uwproto_type = XX_PROTO_VALIDATE;
     strcpy(stcspackage.data.stplayer_info.szname , str);
     write(sockfd , &stcspackage , sizeof(CSPACKAGE));
 
-    memset(&stcspackage , 0 , sizeof(CSPACKAGE));	/*读取信息*/
+    memset(&stcspackage , 0 , sizeof(CSPACKAGE));	/*读取信息
     read(sockfd, &stcspackage , sizeof(CSPACKAGE));
-    printf("from server: prototype: %d content:%s\n" , stcspackage.uwproto_type , stcspackage.data.acdata);
+    printf("from server: prototype: %d content:%s\n" , stcspackage.uwproto_type , stcspackage.data.acdata);*/
 
     for (;;) {
     	memset(&stcspackage , 0 , sizeof(CSPACKAGE));

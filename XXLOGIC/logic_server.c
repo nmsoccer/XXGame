@@ -18,6 +18,10 @@
 //////////////////////LOCAL VAR/////////////////////////////////
 static bus_interface *bus_to_connect = NULL;	/*与connect_server链接的bus*/
 
+static u8 connect_server_id;	/*connect_server的ID*/
+
+static u8 logic_server_id;	/*logic_server的ID*/
+
 /////////////////////LOCAL FUNC////////////////////////////////
 static void handle_signal(int sig_no);
 
@@ -25,8 +29,13 @@ static void handle_signal(int sig_no);
  * 处理主要游戏逻辑的逻辑服务器进程
  */
 int main(int argc , char **argv){
+	SSPACKAGE sspackage;
+
 	struct sigaction sig_act;	/*信号动作*/
-	int iRet;
+
+
+
+	int iret;
 
 	/*检测参数*/
 	if(argc < 2){
@@ -41,7 +50,10 @@ int main(int argc , char **argv){
 
 	/*链接BUS*/
 	if(strcmp(argv[1] , "LOGIC1") == 0){	/*logic_server1*/
-		bus_to_connect = attach_bus(GAME_CONNECT_SERVER1 , GAME_LOGIC_SERVER1);
+		connect_server_id = GAME_CONNECT_SERVER1;
+		logic_server_id = GAME_LOGIC_SERVER1;
+
+		bus_to_connect = attach_bus(connect_server_id , logic_server_id);
 
 		if(!bus_to_connect){
 			log_error("logic server1: attach to connect failed!\n");
@@ -54,11 +66,31 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
+	PRINT("logic server starts...");
 
 	/*主循环*/
 	while(1){
-		PRINT("LOGIC1...");
-		sleep(1);
+		iret = recv_bus(logic_server_id , connect_server_id , bus_to_connect , &sspackage);
+		if(iret == -1){	/*读包出错*/
+			log_error("logic server: recv bus failed!");
+		}
+		if(iret == -2){	/*BUS为空*/
+//			PRINT("bus is empty!");
+			sleep(1);
+			continue;
+		}
+		PRINT("recv connect bus success~!");
+
+
+		strcat(sspackage.cs_data.data.acdata , "logic!");
+		iret = send_bus(connect_server_id , logic_server_id , bus_to_connect , &sspackage);
+		while(iret != 0){
+			PRINT("logic server sending bus...");
+			send_bus(connect_server_id , logic_server_id , bus_to_connect , &sspackage);
+			sleep(1);
+		}
+		PRINT("send bus success!\n");
+
 	}
 
 	return 0;

@@ -26,6 +26,7 @@ int main(int argc , char **argv){
 	size_t size = 0;
 	key_t key;
 	bus_interface *pstbus_interface = NULL;
+	char *src;
 
 	printf("create bus...\n");
 	/*创建connect_server1与logic_server1的BUS*/
@@ -35,12 +36,13 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
-	size = sizeof(bus_interface) + sizeof(SSPACKAGE) * PACKAGE_NR_CONN_LOG * 2;	/*双通道*/
+
+	size = sizeof(bus_interface);
 	printf("real size is: %x\n" , size);
 	if(size % PAGE_SIZE != 0){	/*必须是页面的整数倍*/
 		size = (size / PAGE_SIZE + 1) * PAGE_SIZE;
 	}
-	printf("should size is: %x\n" , size);
+	printf("alloc size is: %x\n" , size);
 
 	ishm_id = shmget(key , size , IPC_CREAT | IPC_EXCL | BUS_MODE_FLAG);
 	if(ishm_id < 0 ){
@@ -54,21 +56,21 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
+	memset(pstbus_interface , 0 , size);
 	pstbus_interface->udwproc_id_recv_ch1 = GAME_CONNECT_SERVER1;	/*管道1用于CONNECT收包*/
-	pstbus_interface->channel_one.start_addr = (char *)pstbus_interface + sizeof(bus_interface);
-	pstbus_interface->channel_one.end_addr = pstbus_interface->channel_one.start_addr + sizeof(SSPACKAGE) * PACKAGE_NR_CONN_LOG;
-	pstbus_interface->channel_one.head = pstbus_interface->channel_one.start_addr;
-	pstbus_interface->channel_one.tail = pstbus_interface->channel_one.start_addr;
-
 	pstbus_interface->udwproc_id_recv_ch2 = GAME_LOGIC_SERVER1;		/*管道2用于LOGIC收包*/
-	pstbus_interface->channel_two.start_addr = pstbus_interface->channel_one.end_addr;
-	pstbus_interface->channel_two.end_addr = pstbus_interface->channel_two.start_addr + sizeof(SSPACKAGE) * PACKAGE_NR_CONN_LOG;
-	pstbus_interface->channel_two.head = pstbus_interface->channel_two.start_addr;
-	pstbus_interface->channel_two.tail = pstbus_interface->channel_two.start_addr;
+
 
 	printf("create bus of connect1 and logic1 success...%x:\n" , pstbus_interface);
-	printf("channel one: %x ~ %x\n" , pstbus_interface->channel_one.start_addr , pstbus_interface->channel_one.end_addr);
-	printf("channel two: %x ~ %x\n" , pstbus_interface->channel_two.start_addr , pstbus_interface->channel_two.end_addr);
+	printf("pstbus_interface: %d vs %d\n" , pstbus_interface ->udwproc_id_recv_ch1 , pstbus_interface ->udwproc_id_recv_ch2);
+	printf("channel one: %x ~ %x\n" , pstbus_interface->channel_one.data , &pstbus_interface->channel_one.data[CHANNEL_MAX_PACKAGE]);
+	printf("channel two: %x ~ %x\n" , pstbus_interface->channel_two.data , &pstbus_interface->channel_two.data[CHANNEL_MAX_PACKAGE]);
 
+	PRINT("create bus from connect to logic success!");
+/*
+	printf("here!\n");
+	memcpy(pstbus_interface->channel_two.start_addr , "helloworld" , 9);
+	printf("it is:%s\n" , pstbus_interface->channel_two.start_addr);
+*/
 	return 0;
 }

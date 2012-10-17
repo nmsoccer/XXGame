@@ -96,13 +96,17 @@ static int write_socket(int isock_fd , CSPACKAGE *pstcspackage);
 static int send_to_client(int client_fd);
 
 /*
- * 尽可能多地读取与connect_server链接的所有bus数据，并尽可能发送到对应的客户端；
- *
+ * 尽可能多地读取与connect_server链接的所有bus数据，并尽可能多地将取得的包发送到对应的客户端；
+ * 如果客户端socket写缓冲区满则将该包放入client该socket的发送队列
+ * 一个管道最多读10个包然后换管道
  */
-static int try_handle_buses(void){
-	return 0;
-}
+static int try_handle_buses(void);
 
+
+/*
+ * 轮询所有活跃链接的发送队列将其队列清空
+ */
+static int send_to_all_clients(void);
 
 /*
  * 关闭某个客户端需要清除起收发队列里的包
@@ -148,6 +152,7 @@ int main(int argc , char **argv){
 	int iRet = -1;
 	int i;
 
+	u32 ticks = 0;	/*时间滴答*/
 
 	/*检测参数*/
 	if(argc < 2){
@@ -212,6 +217,10 @@ int main(int argc , char **argv){
 		connect_server_id =GAME_CONNECT_SERVER1;
 		logic_server_id = GAME_LOGIC_SERVER1;
 		printf("attach: %x %d vs %d\n" , bus_to_logic , bus_to_logic->udwproc_id_recv_ch1 , bus_to_logic->udwproc_id_recv_ch2);
+
+//		memcpy(bus_to_logic->channel_two.start_addr , "helloworld" , 9);
+//		printf("it is:%s\n" , bus_to_logic->channel_two.start_addr);
+
 	}else{
 		log_error("connect server1: illegal param1:");
 		log_error(argv[1]);
@@ -220,7 +229,9 @@ int main(int argc , char **argv){
 
 	/*主逻辑*/
 	while(1){
-		iactive_fds = epoll_wait(iepoll_fd , astepoll_events , MAX_CONNECT_CLIENTS+1 , 2000);
+		ticks++;		/*循环一次加一个滴答*/
+
+		iactive_fds = epoll_wait(iepoll_fd , astepoll_events , MAX_CONNECT_CLIENTS+1 , 200);
 		if(iactive_fds < 0){
 			log_error("epoll wait error!");
 			return -1;
@@ -228,7 +239,6 @@ int main(int argc , char **argv){
 
 		/*检测每个FD*/
 		for(i=0; i<iactive_fds; i++){
-
 			/*监听FD*/
 			if(astepoll_events[i].data.fd == iserv_fd){	/*如果是监听socket，则accept*/
 				memset(&stcli_addr , 0 , sizeof(stcli_addr));
@@ -296,8 +306,11 @@ int main(int argc , char **argv){
 		}	/*end for*/
 
 		/*在处理了socket 接口之后的其他操作*/
+		try_handle_buses();
 
-
+		if(ticks % 5 == 0){	/*每隔五个滴答*/
+			send_to_all_clients();
+		}
 
 	}	/*end while*/
 
@@ -425,6 +438,70 @@ static int close_client(int client_fd){
 	client.max_active_fd--;
 
 	return 0;
+}
+
+
+/*
+ * 尽可能多地读取与connect_server链接的所有bus数据，并尽可能多地将取得的包发送到对应的客户端；
+ * 如果客户端socket写缓冲区满则将该包放入client该socket的发送队列
+ * 一个管道最多读10个包然后换管道
+ */
+static int try_handle_buses(void){
+	SSPACKAGE sspackage;
+
+	bus_interface *bus = NULL;
+	CSPACKAGE_NODE *pstnode = NULL;
+
+	int icount = 0;	/*记录成功发送的包数目*/
+	int isend_bytes = 0;	/*发送的字节数目*/
+	int iret;
+
+	/*获得connect与logic的bus包*/
+	while(1){
+		/*一次不能超过10个包*/
+		if(icount > 10){
+			break;
+		}
+
+		/*读BUS*/
+		iret = recv_bus(connect_server_id , logic_server_id , bus_to_logic , &sspackage);
+		if(iret == -1){	/*读BUS出错*/
+			log_error("connect server: try handle buses: bus_to_logic , read bus failed!");
+			break;
+		}
+		if(iret == -2){	/*包空*/
+			break;
+		}
+
+		/*发包*/
+		isend_bytes = write_socket(sspackage.client_fd , &sspackage.cs_data);
+		if(isend_bytes != sizeof(CSPACKAGE)){		/*如果发送失败或者发送字节小于一个包长则将其放入发送队列中*/
+			pstnode = (CSPACKAGE_NODE *)malloc(sizeof(CSPACKAGE));
+
+			memcpy(&pstnode->cs_data , &sspackage.cs_data , sizeof(CSPACKAGE));
+			pstnode->node_next = NULL;
+			client.client_connects[sspackage.client_fd].send_tail->node_next = pstnode;
+			client.client_connects[sspackage.client_fd].send_count++;
+
+			break;
+		}
+
+		/*发送成功，继续取包*/
+		icount++;
+	}
+
+	return 0;
+}
+
+static int send_to_all_clients(void){
+	int i;
+
+	for(i=0; i<client.max_active_fd; i++){
+		send_to_client(client.active_fds[i]);
+	}
+
+	return 0;
+
 }
 
 

@@ -15,9 +15,9 @@
 #include "../common.h"
 
 ////////////////////////////////MACRO DEFINE////////////////////////////////
-#define PACKAGE_NR_CONN_LOG	10	/*connect_server与logic_server单通道的包容量*/
+#define CHANNEL_MAX_PACKAGE 40	/*bus单通道的包容量*/
 
-#define BUS_MODE_FLAG	S_IRUSR | S_IWUSR
+#define BUS_MODE_FLAG	S_IRWXU | S_IRWXG | S_IRWXO
 
 #define PATH_NAME "/etc/passwd"
 
@@ -28,16 +28,15 @@
  * 如果CHANNEL A用于A进程接收则表示对于B是发送管道；
  * 同理CHANNEL B用于B进程接收则表示对于A是发送管道；
  */
-struct stbus_channel{
-	u32 package_num;	/*包的数量*/
-	char *start_addr;	/*该管道起始地址*/
-	char *end_addr;		/*该管道结束地址*/
-	char *head;		/*队首地址，用于收包*/
-	char *tail;			/*队尾地址，用于发包*/
+struct _bus_channel{
+	SSPACKAGE data[CHANNEL_MAX_PACKAGE];
+	u8 package_num;	/*包的数量*/
+	u8 head;		/*队首地址，用于收包*/
+	u8 tail;			/*队尾地址，用于发包*/
 	spin_lock_t spin_lock;	/*该channel的自旋锁*/
 };
 
-typedef struct stbus_channel bus_channel;
+typedef struct _bus_channel bus_channel;
 
 /*
  * BUS INTERFACE

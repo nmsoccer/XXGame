@@ -75,7 +75,7 @@ int set_sock_buff_size(int sock_fd , int send_size , int recv_size){
 		log_error("get sock recv buff failed!");
 		return -1;
 	}
-	printf("new send buff size: %dK; recv buff size: %dK" , s_size/1024 , r_size/1024);
+	printf("new send buff size: %dK; recv buff size: %dK\n" , s_size/1024 , r_size/1024);
 
 	return 0;
 }

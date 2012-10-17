@@ -27,7 +27,7 @@ int main(int argc , char **argv){
 	size_t size = 0;
 	key_t key;
 	int iRet = -1;
-	bus_interface *addr;
+	bus_interface *pstbus_interface;
 
 	printf("delete bus...\n");
 	/*删除connect_server与logic_server的BUS*/
@@ -37,7 +37,7 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
-	size = sizeof(bus_interface) + sizeof(SSPACKAGE) * PACKAGE_NR_CONN_LOG * 2;	/*双通道*/
+	size = sizeof(bus_interface);
 	if(size % PAGE_SIZE != 0){	/*必须是页面的整数倍*/
 		size = (size / PAGE_SIZE + 1) * PAGE_SIZE;
 	}
@@ -48,6 +48,19 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
+	pstbus_interface = (bus_interface *)shmat(ishm_id , NULL , 0);
+	printf("pstbus_interface: %d vs %d\n" , pstbus_interface ->udwproc_id_recv_ch1 , pstbus_interface ->udwproc_id_recv_ch2);
+
+/*
+	str = (char *)pstbus_interface;
+	printf("herre!\n");
+	printf("it is:%s\n" , str);
+	memcpy(str , "GGGGGGGGGGGGGGGGGG" , 10);
+	printf("it si:%s\n" , str);
+*/
+//	memcpy(pstbus_interface->channel_two.start_addr , "aaaaaaaaa" , 9);
+//	printf("it is:%s\n" , pstbus_interface->channel_two.start_addr);
+
 /*
 	addr = shmat(ishm_id , NULL , 0);
 	printf("addr: %x %d vs %d\n" , addr , addr->udwproc_id_recv_ch1 , addr->udwproc_id_recv_ch2);
@@ -57,8 +70,7 @@ int main(int argc , char **argv){
 		log_error("delete_bus: Remove bus between conncet1 and logic1 failed!");
 		return -1;
 	}
-
-	printf("delete bus between connect1 and logic1 success!\n");
+	PRINT("delete bus between connect1 and logic1 success!");
 
 	return 0;
 }
