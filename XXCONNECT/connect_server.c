@@ -18,6 +18,7 @@
 #include "common.h"
 #include "tool.h"
 #include "mytypes.h"
+#include "mempoll.h"
 
 #include "XXBUS/xx_bus.h"
 
@@ -74,10 +75,11 @@ static CLIENT client;
 static bus_interface *bus_to_logic = NULL;
 
 /*connect_server的ID*/
-u8 connect_server_id;
+static u8 connect_server_id;
 /*logic_server的ID*/
-u8 logic_server_id;
-
+static u8 logic_server_id;
+/*内存池*/
+static xxmem_poll *poll;
 //////////////////////////////////////////////FUNCTION/////////////////////////////////////
 /*
  * 读取数据
@@ -205,6 +207,13 @@ int main(int argc , char **argv){
 	stsig_act.sa_handler = handle_signal;
 	sigaction(SIGINT , &stsig_act , NULL);
 
+	/*创建内存池*/
+	poll = create_mem_poll();
+	if(!poll){
+		log_error("crate mem poll failed!");
+		return -1;
+	}
+
 	/*链接BUS*/
 	if(strcmp(argv[1] , "CONNECT1") == 0){	/*connect_server1*/
 		bus_to_logic = attach_bus(GAME_CONNECT_SERVER1 , GAME_LOGIC_SERVER1);
@@ -275,7 +284,7 @@ int main(int argc , char **argv){
 				handle_fd = astepoll_events[i].data.fd;
 				/*read client*/
 				memset(&sspackage_recv , 0 , sizeof(SSPACKAGE));
-				sspackage_recv.client_fd = handle_fd;
+				sspackage_recv.sshead.client_fd = handle_fd;
 				iRet = read_socket(handle_fd , &sspackage_recv.cs_data);
 
 				if(iRet == sizeof(CSPACKAGE)){
@@ -357,6 +366,9 @@ static int send_to_client(int client_fd){
 
 	pstconnect = &client.client_connects[client_fd];
 	pstnode = pstconnect->send_head;
+
+//	printf("there are %d packages in send_queue" , pstconnect->send_count);
+
 	while(1){
 		if(pstnode == NULL){
 			break;
@@ -370,7 +382,8 @@ static int send_to_client(int client_fd){
 		pstconnect->send_count--;
 		pstnodetmp = pstnode;
 		pstnode = pstnode->node_next;
-		free(pstnodetmp);
+//		free(pstnodetmp);
+		xx_free_mem(poll , pstnodetmp , sizeof(CSPACKAGE_NODE));
 	}
 
 	/*调整connect的发送队列首尾指针*/
@@ -405,7 +418,8 @@ static int close_client(int client_fd){
 
 		pstnodetmp = pstnode;
 		pstnode = pstnode->node_next;
-		free(pstnodetmp);
+//		free(pstnodetmp);
+		xx_free_mem(poll , pstnodetmp , sizeof(CSPACKAGE_NODE));
 	}
 
 	/*清除接收队列*/
@@ -417,7 +431,8 @@ static int close_client(int client_fd){
 
 		pstnodetmp = pstnode;
 		pstnode = pstnode->node_next;
-		free(pstnodetmp);
+//		free(pstnodetmp);
+		xx_free_mem(poll , pstnodetmp , sizeof(CSPACKAGE_NODE));
 	}
 
 	memset(pstconnect , 0 , sizeof(client_connect));
@@ -474,14 +489,15 @@ static int try_handle_buses(void){
 		}
 
 		/*发包*/
-		isend_bytes = write_socket(sspackage.client_fd , &sspackage.cs_data);
+		isend_bytes = write_socket(sspackage.sshead.client_fd , &sspackage.cs_data);
 		if(isend_bytes != sizeof(CSPACKAGE)){		/*如果发送失败或者发送字节小于一个包长则将其放入发送队列中*/
-			pstnode = (CSPACKAGE_NODE *)malloc(sizeof(CSPACKAGE));
+//			pstnode = (CSPACKAGE_NODE *)malloc(sizeof(CSPACKAGE));
+			pstnode = (CSPACKAGE_NODE *)xx_alloc_mem(poll , sizeof(CSPACKAGE));
 
 			memcpy(&pstnode->cs_data , &sspackage.cs_data , sizeof(CSPACKAGE));
 			pstnode->node_next = NULL;
-			client.client_connects[sspackage.client_fd].send_tail->node_next = pstnode;
-			client.client_connects[sspackage.client_fd].send_count++;
+			client.client_connects[sspackage.sshead.client_fd].send_tail->node_next = pstnode;
+			client.client_connects[sspackage.sshead.client_fd].send_count++;
 
 			break;
 		}
@@ -504,7 +520,6 @@ static int send_to_all_clients(void){
 
 }
 
-
 /*
  * 处理信号函数
  * relay local var: bus_to_logic
@@ -516,6 +531,7 @@ static void handle_signal(int sig_no){
 			if(bus_to_logic){
 				detach_bus(bus_to_logic);	/*脱离BUS*/
 			}
+			delete_mem_poll(poll);
 			exit(0);
 		break;
 

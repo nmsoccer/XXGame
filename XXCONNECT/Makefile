@@ -1,7 +1,7 @@
 CC = gcc
 FLAGS = -g -Wall -lpthread
 INCLUDE =  ..
-LIBOBJS = ../tool.o ../XXBUS/xx_bus.o
+LIBOBJS = ../tool.o ../mempoll.o ../XXBUS/xx_bus.o
 
 connect_server:connect_server.o $(LIBOBJS)
 	$(CC) connect_server.o $(LIBOBJS) -o $@

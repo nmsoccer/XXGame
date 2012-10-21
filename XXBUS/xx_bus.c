@@ -116,7 +116,7 @@ int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *packa
 //	get_spin_lock(&channel->spin_lock);	/*上锁*/
 //	memcpy(channel->tail , "helloworld" , 9);
 	memcpy(&channel->data[channel->tail] , package , sizeof(SSPACKAGE));
-	channel->tail++;
+	channel->tail = (channel->tail + 1) % CHANNEL_MAX_PACKAGE;
 	channel->package_num++;
 //	drop_spin_lock(&channel->spin_lock);	/*解锁*/
 
@@ -171,7 +171,7 @@ int recv_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *packa
 	 */
 //	get_spin_lock(&channel->spin_lock);	/*上锁*/
 	memcpy(package ,  &channel->data[channel->head] , sizeof(SSPACKAGE));
-	channel->head ++;
+	channel->head = (channel->head + 1) % CHANNEL_MAX_PACKAGE;
 	channel->package_num--;
 //	drop_spin_lock(&channel->spin_lock);	/*解锁*/
 

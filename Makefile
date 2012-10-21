@@ -1,7 +1,7 @@
 CC = gcc
 MAKE = make
 SUBDIR = XXCONNECT XXBUS XXLOGIC
-OBJS = tool.o XXBUS/xx_bus.o
+OBJS = tool.o mempoll.o XXBUS/xx_bus.o
 FLAGS = -g -Wall
 INCLUDE = ..
 
@@ -13,7 +13,9 @@ all:$(OBJS)
 	done	
 		
 tool.o:tool.c
-	$(CC) $(FLAGS) -c $<	
+	$(CC) $(FLAGS) -c $<
+mempoll.o:mempoll.c
+	$(CC) $(FLAGS) -c $<		
 XXBUS/xx_bus.o:XXBUS/xx_bus.c
 	$(CC) $(FLAGS) -c $<	
 clean:

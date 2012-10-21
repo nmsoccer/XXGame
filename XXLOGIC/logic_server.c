@@ -13,6 +13,8 @@
 #include "common.h"
 #include "tool.h"
 
+#include "xxmap.h"
+
 #include "XXBUS/xx_bus.h"
 
 //////////////////////LOCAL VAR/////////////////////////////////

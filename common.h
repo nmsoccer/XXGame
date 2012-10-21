@@ -65,9 +65,12 @@ struct stplayer{
  * 客户与服务端交互数据包
  */
 typedef struct{
-	u16 uwproto_type;	/*协议类型*/
+	struct _cshead{		/*CS包头*/
+		/*协议类型*/
+		u16 proto_type;
+	}cshead;
 
-	union _data{
+	union _data{			/*CS包内容*/
 		struct stplayer stplayer_info;
 		char acdata[CS_DATA_LEN];
 	} data;
@@ -77,8 +80,14 @@ typedef struct{
 /*
  * 服务器进程之间交互的数据包
  */
+#define SS_NORMAL	1	/*普通的服务器包类型*/
+#define SS_BROADCAST 2	/*广播包*/
+
 typedef struct{
-	int client_fd;	/*与客户端连接的socket fd*/
+	struct _sshead{
+		u8  package_type;		/*服务器包类型*/
+		int client_fd;	/*与客户端连接的socket fd*/
+	}sshead;
 	CSPACKAGE cs_data;	/*读入或者发送的客户端数据包*/
 }SSPACKAGE;
 
