@@ -1,6 +1,6 @@
 CC = gcc
 MAKE = make
-SUBDIR = XXCONNECT XXBUS XXLOGIC
+SUBDIR = XXCONNECT XXBUS XXLOGIC XXLOG
 OBJS = tool.o mempoll.o XXBUS/xx_bus.o
 FLAGS = -g -Wall
 INCLUDE = ..
@@ -25,4 +25,8 @@ clean:
 	echo "Clean $$dir...";\
 	$(MAKE) clean -C $$dir;\
 	done
-#	cd XXCONNECT && $(MAKE) clean	
+#	cd XXCONNECT && $(MAKE) clean
+
+client:
+	gcc XXClient.c tool.c -o b
+		

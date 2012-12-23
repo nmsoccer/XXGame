@@ -12,6 +12,7 @@
 
 #include "xx_bus.h"
 
+
 /*
  * 链接上BUS
  * @proc1: 利用BUS通信的一个进程标志

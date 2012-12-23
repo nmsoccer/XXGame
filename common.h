@@ -8,15 +8,20 @@
 #ifndef COMMON_H_
 #define COMMON_H_
 
+#include <stdio.h>
+#include <stdlib.h>
+#include <time.h>
 #include "mytypes.h"
+#include <string.h>
+#include <errno.h>
 
-
+extern int errno;
 
 #define CS_DATA_LEN 512
 
 #define DEBUG
 
-/////////////////////////MACRO////////////////////////////
+/*=======================MACRO=========================================*/
 #ifdef DEBUG
 #define PRINT(e) do{ 			\
 		printf("%s\n" , e); 			\
@@ -35,6 +40,15 @@
 #define XX_PROTO_VALIDATE	1	/*验证用户信息*/
 #define XX_PROTO_TEST 255		/*测试类型包*/
 
+
+/*
+ * 打开文件的权限
+ */
+#define MODE_READ_FILE		S_IRUSR | S_IXUSR
+#define MODE_WRITE_FILE		S_IWUSR | S_IXUSR
+#define MODE_RDWR_FILE		(S_IRUSR | S_IWUSR | S_IXUSR)
+
+
 /*
  * 各个进程在游戏环境中的ID
  */
@@ -47,8 +61,31 @@
 #define GAME_LOGIC_SERVER2			22
 
 #define GAME_CONNECT_SERVER3	31	/*3线*/
-#define GAME_LOGIC_SERVER3	22	32
+#define GAME_LOGIC_SERVER3	32
 
+/*
+ * 记录各种LOG事件类型
+ */
+#define LOG_RECORD_SIZE		1024	/*一条日志记录的长度*/
+#define LOG_INFO 1 /*一些发生的重要信息*/
+#define LOG_ERR	2 /*发生的普通错误信息，但不会引起服务器DOWN机*/
+#define LOG_DUMP 3 /*发生严重的错误，服务器无法启动或者DOWN掉*/
+
+
+/*
+ * 获得当前时间的字符串
+ */
+#define STR_CURRENT_TIME(_sct_time_str)		do{ \
+																	time_t _sct_tp;				\
+																	struct tm *_sct_tm;		\
+																	_sct_tp = time(0);							\
+																	_sct_tm = localtime(&_sct_tp);					\
+																	snprintf(_sct_time_str , sizeof(_sct_time_str) , "%d,%d,%d,%d:%d:%d" , 	\
+																	_sct_tm->tm_year + 1900 , _sct_tm->tm_mon + 1 , _sct_tm->tm_mday , _sct_tm->tm_hour , _sct_tm->tm_min , _sct_tm->tm_sec);																								\
+															}while(0)
+
+
+/*=======================DATA STRUCT=========================================*/
 /*
  * PLAYER INFO
  */
