@@ -13,6 +13,7 @@ typedef unsigned short u16;
 typedef unsigned int u32;
 typedef unsigned long ul32;
 //typedef unsigned double u64;
+typedef unsigned int proc_t;
 
 typedef unsigned char spin_lock_t;
 

@@ -11,6 +11,192 @@
 #include <string.h>
 
 #include "xx_bus.h"
+//#include "common.h"
+
+#define INT_CONTAINER_LEN (MAX_SERV_PROC * 2)
+
+/*用于存储不同进程的bus_interface;*/
+typedef struct _procs_interface{
+	bus_interface *interface;		/*两个通信进程的bus_interface*/
+	proc_t or_two_proc;			/*两个通信进程ID的或*/
+}procs_interface;
+
+static procs_interface interface_container[INT_CONTAINER_LEN] = {0};	/*通信进程interface的仓库*/
+
+/*根据proc1与proc2来得到与之相关的interface在interface_container中的偏移
+ * 成功返回index失败返回-1
+ */
+static int get_index_container(proc_t proc1 , proc_t proc2);
+
+static bus_interface *attach_bus(proc_t proc1 , proc_t proc2);
+static int detach_bus(bus_interface *bus);
+static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , SSPACKAGE *package);
+static int recv_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , SSPACKAGE *package);
+
+/*
+ * 打开BUS，准备通信
+ * 要依靠BUS收发包必须要打开BUS
+ * @param proc1: 利用BUS通信的一个进程标志
+ * @parm proc2: 利用BUS通信的另一个进程标志
+ * @return:成功返回0；失败返回-1
+ */
+int open_bus(u32 proc1 , u32 proc2){
+	int index = 0;
+	proc_t or_procs = 0;
+	bus_interface *interface_of_procs = NULL;
+	int icount = 0;
+
+	/*擦除每个进程全局ID的线号，然后相或*/
+	or_procs = (proc1 & 0x00FFFFFF) | (proc2 & 0x00FFFFFF);
+
+	/*获取与通信进程相关的interface在interface_container中的偏移*/
+	/*找到一个空白项。首先hash之，如果有冲突则往后加*/
+	index = or_procs % INT_CONTAINER_LEN;
+	while(1){
+		if(interface_container[index].or_two_proc == 0 && interface_container[index].interface == NULL){	/*该项还未被使用*/
+			break;
+		}
+		if(interface_container[index].interface != NULL && interface_container[index].or_two_proc == or_procs){	/*BUS已经打开*/
+			printf("bus between %d <-> %d is opened!\n" , proc1 , proc2);
+//			write_log(LOG_INFO , "reopen bus between %d <-> %d!\n" , proc1 , proc2);
+			return 0;
+		}
+		index = (index + 1) % INT_CONTAINER_LEN;
+
+		icount++;
+		if(icount >= INT_CONTAINER_LEN){/*用于避免死循环。这种情况理论上来说一定不出现*/
+			printf("open bus some bad error happened!\n");
+			return -1;
+		}
+
+	}
+
+	/*将进程attach到共享内存BUS上*/
+	interface_of_procs = attach_bus(proc1 , proc2);
+	if(!interface_of_procs){
+		printf("open bus failed!\n");
+		return -1;
+	}
+
+	/*填充数组*/
+	interface_container[index].interface = interface_of_procs;
+	interface_container[index].or_two_proc = or_procs;
+
+	return 0;
+}
+
+/*
+ * 关闭BUS
+ * 打开BUS收发包之后，如果不想再使用，则调用该函数关闭
+ * @param proc1: 利用BUS通信的一个进程标志
+ * @parm proc2: 利用BUS通信的另一个进程标志
+ * @return:成功返回0；失败返回-1
+ */
+int close_bus(u32 proc1 , u32 proc2){
+	int index = -1;
+	bus_interface *interface_of_procs = NULL;
+
+	/*获取与通信进程相关的interface在interface_container中的偏移*/
+	index = get_index_container(proc1 , proc2);
+	if(index == -1){	/*通信BUS并未建立*/
+		return 0;	/*未建立BUS也可以认为关闭成功*/
+	}
+
+	/*detach bus*/
+	interface_of_procs = interface_container[index].interface;
+	detach_bus(interface_of_procs);
+
+	/*清空*/
+	interface_container[index].interface = NULL;
+	interface_container[index].or_two_proc = 0;
+
+	return 0;
+}
+
+
+/*
+ * 通过BUS发送包
+ * @param recv_proc:接收进程标志
+ * @param send_proc: 发送进程标志
+ * @param package: 发送包缓冲区
+ * @return:
+ * 0:发送成功；
+ * -1：出现错误
+ * -2: BUS满
+ */
+int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package){
+	int index = -1;
+	int iret = -1;
+
+	/*获取与通信进程相关的interface在interface_container中的偏移*/
+	index = get_index_container(recv_proc , send_proc);
+	if(index == -1){	/*通信BUS并未建立*/
+		printf("send bus failed!\n");
+		return -1;
+	}
+
+	/*send*/
+	iret = send_bus(recv_proc , send_proc , interface_container[index].interface , package);
+
+	return iret;
+}
+
+/*
+ * 通过BUS接收包
+ * @param recv_proc:接收进程标志
+ * @param send_proc: 发送进程标志
+ * @param package: 接收包缓冲区
+ * @return:
+ * 0:接收成功；
+ * -1：出现错误
+ * -2: BUS空
+ */
+int get_bus_pkg(u32 recv_proc , u32 send_proc , SSPACKAGE *package){
+	int index = -1;
+	int iret = -1;
+
+	/*获取与通信进程相关的interface在interface_container中的偏移*/
+	index = get_index_container(recv_proc , send_proc);
+	if(index == -1){	/*通信BUS并未建立*/
+		printf("recv bus failed!\n");
+		return -1;
+	}
+
+	/*recv*/
+	iret = recv_bus(recv_proc , send_proc , interface_container[index].interface , package);
+
+	return iret;
+}
+
+
+/*根据proc1与proc2来得到与之相关的interface在interface_container中的偏移
+ * 成功返回index失败返回-1
+ */
+static int get_index_container(proc_t proc1 , proc_t proc2){
+	int index = 0;
+	proc_t or_procs = 0;
+	int icount = 0;
+
+	/*擦除每个进程全局ID的线号，然后相或*/
+	or_procs = (proc1 & 0x00FFFFFF) | (proc2 & 0x00FFFFFF);
+
+	/*获取与通信进程相关的interface在interface_container中的偏移*/
+	/*首先hash之，如果有冲突则往后加*/
+	index = or_procs % INT_CONTAINER_LEN;
+	while(1){
+		if(interface_container[index].interface != NULL && interface_container[index].or_two_proc == or_procs){	/*找到对应项*/
+			break;
+		}
+
+		index = (index + 1) % INT_CONTAINER_LEN;
+		icount++;	/*用于避免死循环*/
+		if(icount >= INT_CONTAINER_LEN){	/*说明没有找到*/
+			return -1;
+		}
+	}
+
+	return index;
+}
 
 
 /*
@@ -19,34 +205,29 @@
  * @proc2:利用BUS通信的另一个进程标志
  * @return:成功返回该BUS接口；失败返回NULL
  */
-bus_interface *attach_bus(u8 proc1 , u8 proc2){
+static bus_interface *attach_bus(proc_t proc1 , proc_t proc2){
 	int ishm_id = -1;
-	size_t size = 0;
 	key_t key;
 	bus_interface *pstbus_interface = NULL;
 
 	printf("attach bus...\n");
 	/*为该进程链接proc1与proc2的BUS*/
-	key = ftok(PATH_NAME , proc1 + proc2);
-	if(key < 0){
-		log_error("attach_bus: FTOK failed!");
-		return NULL;
-	}
+	key = proc1 | proc2;
 
-	size = sizeof(bus_interface);
-	if(size % PAGE_SIZE != 0){	/*必须是页面的整数倍*/
-		size = (size / PAGE_SIZE + 1) * PAGE_SIZE;
-	}
 
-	ishm_id = shmget(key , size , BUS_MODE_FLAG);
+
+	ishm_id = shmget(key , 0 , 0);
+//	ishm_id = shmget(key , size , BUS_MODE_FLAG);
 	if(ishm_id < 0 ){
-		log_error("attach_bus: attach bus failed!");
+		printf("attach_bus: attach bus failed!\n");
+//		write_log(LOG_ERR , "attach_bus between %d <-> %d:call shmget failed!" , proc1 , proc2);
 		return NULL;
 	}
 
 	pstbus_interface = (bus_interface *)shmat(ishm_id , NULL , 0);	/*设置该管道INTEFACE*/
 	if(!pstbus_interface){
-		log_error("attach_bus: failed!");
+		printf("attach_bus: failed!\n");
+//		write_log(LOG_ERR , "attach_bus between %d <-> %d:call shmat failed!" , proc1 , proc2);
 		return NULL;
 	}
 
@@ -58,7 +239,7 @@ bus_interface *attach_bus(u8 proc1 , u8 proc2){
  * @bus: bus的接口
  * @return:成功返回0；失败返回-1
  */
-int detach_bus(bus_interface *bus){
+static int detach_bus(bus_interface *bus){
 	if(!bus){
 		return -1;
 	}
@@ -79,10 +260,10 @@ int detach_bus(bus_interface *bus){
  * -1：出现错误
  * -2: BUS满
  */
-int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package){
+static int send_bus(u32 recv_proc , u32 send_proc , bus_interface *bus , SSPACKAGE *package){
 //	PRINT("sending bus...");
 	bus_channel *channel = NULL;	/*发送管道*/
-	char *dest = 0xb784b4888;
+//	char *dest = 0xb784b4888;
 
 	if(!bus || !package){
 		return -1;
@@ -136,7 +317,7 @@ int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *packa
  * -1：出现错误
  * -2: BUS空
  */
-int recv_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package){
+static int recv_bus(u32 recv_proc , u32 send_proc , bus_interface *bus , SSPACKAGE *package){
 	bus_channel *channel = NULL;	/*接收管道*/
 
 	if(!bus || !package){

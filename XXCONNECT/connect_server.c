@@ -71,13 +71,16 @@ typedef struct{
  */
 //static client_connect client_connects[MAX_CONNECT_CLIENTS];
 static CLIENT client;
-/*链接到logic_server的bus*/
-static bus_interface *bus_to_logic = NULL;
+/*与其他进程通信*/
+static proc_t connect_server_id;	/*该线链接服务进程的全局ID*/
+static proc_t logic_server_id;		/*该线逻辑服务器进程的全局ID*/
+static proc_t log_server_id;			/*该线LOG服务器进程的全局ID*/
+//static bus_interface *bus_to_logic = NULL;
 
 /*connect_server的ID*/
-static u8 connect_server_id;
+//static u8 connect_server_id;
 /*logic_server的ID*/
-static u8 logic_server_id;
+//static u8 logic_server_id;
 /*内存池*/
 static xxmem_poll *poll;
 //////////////////////////////////////////////FUNCTION/////////////////////////////////////
@@ -215,26 +218,29 @@ int main(int argc , char **argv){
 	}
 
 	/*链接BUS*/
-	if(strcmp(argv[1] , "CONNECT1") == 0){	/*connect_server1*/
-		bus_to_logic = attach_bus(GAME_CONNECT_SERVER1 , GAME_LOGIC_SERVER1);
-
-		if(!bus_to_logic){
-			log_error("connect_server1: attach to logic failed!");
-			return -1;
+	do{
+		if(strcasecmp(argv[1] , "line1") == 0){	/*1线*/
+			connect_server_id = GAME_LINE_1 | GAME_CONNECT_SERVER;
+			logic_server_id = GAME_LINE_1 | GAME_LOGIC_SERVER;
+			log_server_id = GAME_LINE_1 | GAME_LOG_SERVER;
+			break;
+		}
+		if(strcasecmp(argv[1] , "line2") == 0){	/*2线*/
+			connect_server_id = GAME_LINE_2 | GAME_CONNECT_SERVER;
+			logic_server_id = GAME_LINE_2 | GAME_LOGIC_SERVER;
+			log_server_id = GAME_LINE_2 | GAME_LOG_SERVER;
+			break;
 		}
 
-		connect_server_id =GAME_CONNECT_SERVER1;
-		logic_server_id = GAME_LOGIC_SERVER1;
-		printf("attach: %x %d vs %d\n" , bus_to_logic , bus_to_logic->udwproc_id_recv_ch1 , bus_to_logic->udwproc_id_recv_ch2);
-
-//		memcpy(bus_to_logic->channel_two.start_addr , "helloworld" , 9);
-//		printf("it is:%s\n" , bus_to_logic->channel_two.start_addr);
-
-	}else{
-		log_error("connect server1: illegal param1:");
-		log_error(argv[1]);
+		printf("illegal argument 1:%s , exit!" , argv[1]);
 		return -1;
+	}while(0);
+
+	iRet = open_bus(connect_server_id , logic_server_id);
+	if(iRet < 0){
+		printf("open bus failed!\n");
 	}
+
 
 	/*主逻辑*/
 	while(1){
@@ -297,7 +303,8 @@ int main(int argc , char **argv){
 				}
 
 				/*将读取到的包通过BUS发送给logic*/
-				iRet = send_bus(logic_server_id , connect_server_id , bus_to_logic , &sspackage_recv);/*BUS发送*/
+//				iRet = send_bus(logic_server_id , connect_server_id , bus_to_logic , &sspackage_recv);/*BUS发送*/
+				iRet = send_bus_pkg(logic_server_id , connect_server_id , &sspackage_recv);
 				if(iRet == 0){	/*发送成功*/
 					PRINT("connect server: send bus success!");
 				}else
@@ -479,12 +486,13 @@ static int try_handle_buses(void){
 		}
 
 		/*读BUS*/
-		iret = recv_bus(connect_server_id , logic_server_id , bus_to_logic , &sspackage);
+//		iret = get_bus(connect_server_id , logic_server_id , bus_to_logic , &sspackage);
+		iret = get_bus_pkg(connect_server_id , logic_server_id , &sspackage);
 		if(iret == -1){	/*读BUS出错*/
 			log_error("connect server: try handle buses: bus_to_logic , read bus failed!");
 			break;
 		}
-		if(iret == -2){	/*包空*/
+		if(iret == -2){	/*BUS空*/
 			break;
 		}
 
@@ -525,12 +533,18 @@ static int send_to_all_clients(void){
  * relay local var: bus_to_logic
  */
 static void handle_signal(int sig_no){
+	int iret;
+
 	switch(sig_no){
 		case SIGINT:
 			PRINT("receive SIGINT,ready to exit...");
-			if(bus_to_logic){
-				detach_bus(bus_to_logic);	/*脱离BUS*/
+			/*脱离BUS*/
+			iret = close_bus(connect_server_id , logic_server_id);
+			if(iret < 0){
+				log_error("connect server: detach bus to connect failed!");
 			}
+			PRINT("connect server: detach bus to connect success!");
+			/*销毁内存池*/
 			delete_mem_poll(poll);
 			exit(0);
 		break;

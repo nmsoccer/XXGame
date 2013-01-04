@@ -42,11 +42,11 @@ int main(int argc, char **argv)
         return -1;
     }
 
-    write_log(LOG_INFO , "server starts...%d , name is:%s" , 1 , "leiming");
-    write_log(LOG_ERR , "server starts...%d , name is:%s" , 2 , "lmx");
-    create_dir("/a/b/c/" , MODE_RDWR_FILE);
+ //   write_log(LOG_INFO , "server starts...%d , name is:%s" , 1 , "leiming");
+ //  write_log(LOG_ERR , "server starts...%d , name is:%s" , 2 , "lmx");
+ //   create_dir("/a/b/c/" , MODE_RDWR_FILE);
 
-    return 0;
+//    return 0;
 
 /*
     poll = create_mem_poll();

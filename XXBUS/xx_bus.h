@@ -54,19 +54,62 @@ typedef struct stbus_interface bus_interface;
 
 ///////////////////////////FUNCTION//////////////////////////////////////
 /*
+ * 打开BUS，准备通信
+ * 要依靠BUS收发包必须要打开BUS
+ * @param proc1: 利用BUS通信的一个进程标志
+ * @parm proc2: 利用BUS通信的另一个进程标志
+ * @return:成功返回0；失败返回-1
+ */
+int open_bus(proc_t proc1 , proc_t proc2);
+
+/*
+ * 关闭BUS
+ * 打开BUS收发包之后，如果不想再使用，则调用该函数关闭
+ * @param proc1: 利用BUS通信的一个进程标志
+ * @parm proc2: 利用BUS通信的另一个进程标志
+ * @return:成功返回0；失败返回-1
+ */
+int close_bus(proc_t proc1 , proc_t proc2);
+
+
+/*
+ * 通过BUS发送包
+ * @param recv_proc:接收进程标志
+ * @param send_proc: 发送进程标志
+ * @param package: 发送包缓冲区
+ * @return:
+ * 0:发送成功；
+ * -1：出现错误
+ * -2: BUS满
+ */
+int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
+
+/*
+ * 通过BUS接收包
+ * @param recv_proc:接收进程标志
+ * @param send_proc: 发送进程标志
+ * @param package: 接收包缓冲区
+ * @return:
+ * 0:接收成功；
+ * -1：出现错误
+ * -2: BUS空
+ */
+int get_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
+
+/*
  * 链接上BUS
  * @proc1: 利用BUS通信的一个进程标志
  * @proc2:利用BUS通信的另一个进程标志
  * @return:成功返回该BUS接口；失败返回NULL
  */
-extern bus_interface *attach_bus(u8 proc1 , u8 proc2);
+//extern bus_interface *attach_bus(u8 proc1 , u8 proc2);
 
 /*
  * 脱离BUS
  * @bus: bus的接口
  * @return:成功返回0；失败返回-1
  */
-extern int detach_bus(bus_interface *bus);
+//extern int detach_bus(bus_interface *bus);
 
 
 /*
@@ -80,7 +123,7 @@ extern int detach_bus(bus_interface *bus);
  * -1：出现错误
  * -2: BUS满
  */
-extern int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package);
+//extern int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package);
 
 
 /*
@@ -94,6 +137,6 @@ extern int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE
  * -1：出现错误
  * -2: BUS空
  */
-extern int recv_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package);
+//extern int recv_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package);
 
 #endif /* XX_BUS_H_ */

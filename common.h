@@ -51,17 +51,38 @@ extern int errno;
 
 /*
  * 各个进程在游戏环境中的ID
+ * 各服务进程的ID为32位，前8位是线号；后24位是服务进程号
+ * 所以最多支持线的数目是8线；单线里最多24个服务进程
  */
 //#define GAME_CONNECT_SERVER 	0x01    /*00000001b*/
 //#define GAME_LOGIC_SERVER			0x02    /*00000010b*/
-#define GAME_CONNECT_SERVER1	11	/*1线*/
-#define GAME_LOGIC_SERVER1			12
+#define MAX_LINE_COUNT	8
+#define MAX_SERV_PROC	24
 
-#define GAME_CONNECT_SERVER2	21	/*2线*/
-#define GAME_LOGIC_SERVER2			22
+#define GAME_LINE_1	0x01000000		/*00000001 ...b*/
+#define GAME_LINE_2	0x02000000	/*00000010 ...b*/
+#define GAME_LINE_3	0x04000000	/*00000100 ...b*/
+#define GAME_LINE_4	0x07000000	/*00001000 ...b*/
+#define GAME_LINE_5	0x10000000		/*00010000 ...b*/
+#define GAME_LINE_6	0x20000000	/*00100001 ...b*/
+#define GAME_LINE_7	0x40000000	/*01000001 ...b*/
+#define GAME_LINE_8	0x70000000	/*10000001 ...b*/
 
-#define GAME_CONNECT_SERVER3	31	/*3线*/
-#define GAME_LOGIC_SERVER3	32
+
+#define GAME_CONNECT_SERVER	0x00000001		/*链接客户端服务进程*/
+#define GAME_LOGIC_SERVER			0x00000002	/*处理游戏主逻辑的逻辑进程*/
+#define GAME_LOG_SERVER			0x00000004	/*处理日志的日志服务器*/
+
+
+//#define GAME_CONNECT_SERVER1	11	/*1线*/
+//#define GAME_LOGIC_SERVER1			12
+//#define GAME_LOG_SERVER2			13
+
+//#define GAME_CONNECT_SERVER2	21	/*2线*/
+//#define GAME_LOGIC_SERVER2			22
+
+//#define GAME_CONNECT_SERVER3	31	/*3线*/
+//#define GAME_LOGIC_SERVER3	32
 
 /*
  * 记录各种LOG事件类型
