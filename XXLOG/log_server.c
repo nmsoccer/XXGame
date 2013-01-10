@@ -36,17 +36,28 @@ int main(int argc , char **argv){
 	snprintf(dir_path , sizeof(dir_path) , "./LOG/%d/%d/" , tm->tm_year + 1900 , tm->tm_mon + 1);
 	ret = create_dir(dir_path , MODE_RDWR_FILE);
 	if(ret == 0){
-		write_log(LOG_INFO , "log server:create %s of log server success!\n" , dir_path);
+		write_log(LOG_INFO , "log server:create %s of log server success!" , dir_path);
 	}else{
-		write_log(LOG_DUMP , "log server:create %s of log server failed!\n" , dir_path);
+//		write_log(LOG_DUMP , "log server:create %s of log server failed!\n" , dir_path);
+		printf("log server:create %s of log server failed!" , dir_path);
+		exit(-1);
 	}
 
 	/*open setting*/
 	file_setting = fopen("./log_setting" , "r");
 	if(!file_setting){
-		printf("open log_\n");
+		write_log(LOG_DUMP , "log server:open log_setting failed!");
 		return -1;
 	}
+
+	/*检测参数*/
+	if(argc < 2){
+		write_log(LOG_ERR , "log_server:argc < 2 , please input more information like: log_server line1\n");
+		return -1;
+	}
+
+
+
 
 	/*read setting and create dir*/
 	while(1){
@@ -64,20 +75,19 @@ int main(int argc , char **argv){
 		memset(buff , 0 , sizeof(buff));
 		snprintf(buff , sizeof(buff) , "%d/%d/" , tm->tm_year + 1900 , tm->tm_mon + 1);	/*根据当前日期创建日志目录*/
 		strncat(dir_path , buff , sizeof(dir_path) - strlen(dir_path));	/*组合起来获得完整路径*/
-//		printf("dir_path: %s\n" , dir_path);
 
 		ret = create_dir(&dir_path[1] , MODE_RDWR_FILE);	/*创建目录*/
 		do{
 			if(ret == 0){
-				write_log(LOG_INFO , "log server:create %s success!\n" , &dir_path[1]);
+				write_log(LOG_INFO , "log server:create %s success!" , &dir_path[1]);
 				break;
 			}
 			if(ret == -1){
-				write_log(LOG_ERR , "log server:create %s failed! Please Check!\n" , &dir_path[1]);
+				write_log(LOG_ERR , "log server:create %s failed! Please Check!" , &dir_path[1]);
 				break;
 			}
 			if(ret == -2){
-				write_log(LOG_ERR , "log server:create %s failed! Access Denied\n" , &dir_path[1]);
+				write_log(LOG_ERR , "log server:create %s failed! Access Denied" , &dir_path[1]);
 				break;
 			}
 		}while(0);
@@ -85,6 +95,18 @@ int main(int argc , char **argv){
 	}
 
 	fclose(file_setting);
+
+
+	/*
+	 * logic main process
+	 */
+	while(1);
+
+
+
+
+
+
 	return 0;
 
 }

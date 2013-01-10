@@ -60,7 +60,7 @@ typedef struct stbus_interface bus_interface;
  * @parm proc2: 利用BUS通信的另一个进程标志
  * @return:成功返回0；失败返回-1
  */
-int open_bus(proc_t proc1 , proc_t proc2);
+extern int open_bus(proc_t proc1 , proc_t proc2);
 
 /*
  * 关闭BUS
@@ -69,7 +69,7 @@ int open_bus(proc_t proc1 , proc_t proc2);
  * @parm proc2: 利用BUS通信的另一个进程标志
  * @return:成功返回0；失败返回-1
  */
-int close_bus(proc_t proc1 , proc_t proc2);
+extern int close_bus(proc_t proc1 , proc_t proc2);
 
 
 /*
@@ -82,7 +82,7 @@ int close_bus(proc_t proc1 , proc_t proc2);
  * -1：出现错误
  * -2: BUS满
  */
-int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
+extern int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
 
 /*
  * 通过BUS接收包
@@ -94,7 +94,7 @@ int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
  * -1：出现错误
  * -2: BUS空
  */
-int get_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
+extern int get_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
 
 /*
  * 链接上BUS

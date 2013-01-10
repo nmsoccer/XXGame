@@ -30,7 +30,7 @@
 /*
  * 出错记录
  */
-extern int log_error(char *str);
+//extern int log_error(char *str);
 /*
  * 记录日志信息
  * 注意

@@ -161,14 +161,14 @@ int main(int argc , char **argv){
 
 	/*检测参数*/
 	if(argc < 2){
-		printf("argc < 2 , please input more information like: connect_server CONNECT1\n");
+		write_log(LOG_ERR , "connect_server:argc < 2 , please input more information like: connect_server line1\n");
 		return -1;
 	}
 
 	/*Create sockfd*/
 	iserv_fd = socket(PF_INET , SOCK_STREAM , 0 );
 	if(iserv_fd < 0){
-		log_error("Create connect server socket failed!");
+		write_log(LOG_ERR , "connect_server:create connect server socket failed!");
 		return -1;
 	}
 	iaddr_len = sizeof(struct sockaddr_in);
@@ -180,14 +180,14 @@ int main(int argc , char **argv){
 	stserv_addr.sin_port = htons(CONNECT_PORT);
 	iRet = bind(iserv_fd , (struct sockaddr *)&stserv_addr , iaddr_len);
 	if(iRet < 0){
-		log_error("Bind connect socket failed!");
+		write_log(LOG_ERR , "connect_server:bind connect socket failed!");
 		return -1;
 	}
 
 	/*Create epoll fd and set it*/
 	iepoll_fd = epoll_create(MAX_CONNECT_CLIENTS + 1);	/*包括iserv_fd*/
 	if(iepoll_fd < 0){
-		log_error("epoll create failed!");
+		write_log(LOG_ERR , "connect_server:epoll create failed!");
 		return -1;
 	}
 
@@ -195,7 +195,7 @@ int main(int argc , char **argv){
 	stepoll_event.data.fd = iserv_fd;
 	iRet = epoll_ctl(iepoll_fd , EPOLL_CTL_ADD , iserv_fd , &stepoll_event);
 	if(iRet < 0){
-		log_error("append serve fd to epoll failed!");
+		write_log(LOG_ERR , "connect_server: append serve fd to epoll failed!");
 		return -1;
 	}
 
@@ -213,34 +213,39 @@ int main(int argc , char **argv){
 	/*创建内存池*/
 	poll = create_mem_poll();
 	if(!poll){
-		log_error("crate mem poll failed!");
+		write_log(LOG_ERR , "connect_server:create mem poll failed!");
 		return -1;
+	}else{
+		write_log(LOG_INFO , "connect_server:create mem poll success!");
 	}
 
 	/*链接BUS*/
 	do{
 		if(strcasecmp(argv[1] , "line1") == 0){	/*1线*/
-			connect_server_id = GAME_LINE_1 | GAME_CONNECT_SERVER;
-			logic_server_id = GAME_LINE_1 | GAME_LOGIC_SERVER;
-			log_server_id = GAME_LINE_1 | GAME_LOG_SERVER;
+			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_CONNECT_SERVER;
+			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOGIC_SERVER;
+			log_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOG_SERVER;
 			break;
 		}
 		if(strcasecmp(argv[1] , "line2") == 0){	/*2线*/
-			connect_server_id = GAME_LINE_2 | GAME_CONNECT_SERVER;
-			logic_server_id = GAME_LINE_2 | GAME_LOGIC_SERVER;
-			log_server_id = GAME_LINE_2 | GAME_LOG_SERVER;
+			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_CONNECT_SERVER;
+			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOGIC_SERVER;
+			log_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOG_SERVER;
 			break;
 		}
 
-		printf("illegal argument 1:%s , exit!" , argv[1]);
+		write_log(LOG_ERR , "connect_server:illegal line name:%s , exit!" , argv[1]);
 		return -1;
 	}while(0);
 
 	iRet = open_bus(connect_server_id , logic_server_id);
 	if(iRet < 0){
-		printf("open bus failed!\n");
+		write_log(LOG_ERR , "connect_server:open bus connect <-> logic failed!");
+		return -1;
 	}
 
+	/*start success*/
+	write_log(LOG_INFO , "start connect_server %s success!" , argv[1]);
 
 	/*主逻辑*/
 	while(1){
@@ -248,18 +253,18 @@ int main(int argc , char **argv){
 
 		iactive_fds = epoll_wait(iepoll_fd , astepoll_events , MAX_CONNECT_CLIENTS+1 , 200);
 		if(iactive_fds < 0){
-			log_error("epoll wait error!");
+			write_log(LOG_ERR , "connect_server:epoll wait error!");
 			return -1;
 		}
 
 		/*检测每个FD*/
 		for(i=0; i<iactive_fds; i++){
-			/*监听FD*/
+			/*-----------监听FD----------------*/
 			if(astepoll_events[i].data.fd == iserv_fd){	/*如果是监听socket，则accept*/
 				memset(&stcli_addr , 0 , sizeof(stcli_addr));
 				iaccept_fd = accept(iserv_fd , (struct sockaddr *)&stcli_addr , &iaddr_len);
 
-				printf("-----------accept a new client: %d\n" , iaccept_fd);
+				write_log(LOG_INFO , "connect_server:accept a new client: %d\n" , iaccept_fd);
 				/*设置接收的socket属性*/
 				set_nonblock(iaccept_fd);	/*设置为非阻塞*/
 				set_sock_buff_size(iaccept_fd , 10 * sizeof(CSPACKAGE) , 5 * sizeof(CSPACKAGE));	/*设置socket缓冲区大小*/
@@ -273,19 +278,19 @@ int main(int argc , char **argv){
 				stepoll_event.events = EPOLLIN | EPOLLET | EPOLLRDHUP;
 				iRet = epoll_ctl(iepoll_fd ,  EPOLL_CTL_ADD , iaccept_fd , &stepoll_event);
 				if(iRet < 0){
-					log_error("accept failed!");
+					write_log(LOG_ERR , "connect_server:epoll_ctl %d failed!" , iaccept_fd);
 				}
 				continue;
 			}
 
-			/*断开链接*/
+			/*--------断开链接---------------*/
 			if(astepoll_events[i].events & EPOLLRDHUP){
-				PRINT("client exit!");
+				write_log(LOG_INFO , "connect_server:client %d closed!" , astepoll_events[i].data.fd);
 				close_client(astepoll_events[i].data.fd);
 				continue;
 			}
 
-			/*可以读*/
+			/*-----------可以读---------------*/
 			if(astepoll_events[i].events & EPOLLIN){
 				handle_fd = astepoll_events[i].data.fd;
 				/*read client*/
@@ -294,25 +299,32 @@ int main(int argc , char **argv){
 				iRet = read_socket(handle_fd , &sspackage_recv.cs_data);
 
 				if(iRet == sizeof(CSPACKAGE)){
-					PRINT(">>>read package!");
-				}else
+#ifdef DEBUG
+					printf(">>>read package!\n");
+#endif
+				}
+				else
 				if(iRet > 0){	/*读的数据小于一个包长*/
-					log_error("connect server: read bytes < CSPACKAGE!");
-				}else{	/*没有数据*/
-					log_error("connect server: nothing to read!");
+					write_log(LOG_ERR , "connect server: read pakcage bytes len < CSPACKAGE!");
+				}
+				else{	/*没有数据*/
+					write_log(LOG_INFO , "connect server: nothing to read!");
 				}
 
 				/*将读取到的包通过BUS发送给logic*/
-//				iRet = send_bus(logic_server_id , connect_server_id , bus_to_logic , &sspackage_recv);/*BUS发送*/
 				iRet = send_bus_pkg(logic_server_id , connect_server_id , &sspackage_recv);
 				if(iRet == 0){	/*发送成功*/
-					PRINT("connect server: send bus success!");
-				}else
+#ifdef DEBUG
+					printf("connect server: send bus success!");
+#endif
+				}
+				else
 				if(iRet == -2){	/*BUS满*/
-					log_error("connect server: bus to logic full!");
-				}else
+					write_log(LOG_ERR , "connect server: send bus to logic full!");
+				}
+				else
 				if(iRet == -1){	/*发送失败*/
-					log_error("connect server: send to logic failed!");
+					write_log(LOG_ERR , "connect server: send to logic failed!");
 				}
 
 				/*同时检测该fd是否有需要发的包*/
@@ -321,7 +333,7 @@ int main(int argc , char **argv){
 
 		}	/*end for*/
 
-		/*在处理了socket 接口之后的其他操作*/
+		/*-----在处理了socket 接口之后的其他操作--------*/
 		try_handle_buses();
 
 		if(ticks % 5 == 0){	/*每隔五个滴答*/
@@ -374,8 +386,6 @@ static int send_to_client(int client_fd){
 	pstconnect = &client.client_connects[client_fd];
 	pstnode = pstconnect->send_head;
 
-//	printf("there are %d packages in send_queue" , pstconnect->send_count);
-
 	while(1){
 		if(pstnode == NULL){
 			break;
@@ -383,13 +393,13 @@ static int send_to_client(int client_fd){
 
 		iRet = write_socket(client_fd , &pstnode->cs_data);
 		if(iRet == -1 || iRet != sizeof(CSPACKAGE)){	/*如果发送失败或者发送数据小于一个包长，则退出待以后重新发送*/
+			write_log(LOG_ERR , "connect_server:send to client %d # write_socket failed!" , client_fd);
 			break;
 		}
 
 		pstconnect->send_count--;
 		pstnodetmp = pstnode;
 		pstnode = pstnode->node_next;
-//		free(pstnodetmp);
 		xx_free_mem(poll , pstnodetmp , sizeof(CSPACKAGE_NODE));
 	}
 
@@ -486,10 +496,9 @@ static int try_handle_buses(void){
 		}
 
 		/*读BUS*/
-//		iret = get_bus(connect_server_id , logic_server_id , bus_to_logic , &sspackage);
 		iret = get_bus_pkg(connect_server_id , logic_server_id , &sspackage);
 		if(iret == -1){	/*读BUS出错*/
-			log_error("connect server: try handle buses: bus_to_logic , read bus failed!");
+			write_log(LOG_ERR , "connect server: try handle buses: bus_to_logic , read bus failed!");
 			break;
 		}
 		if(iret == -2){	/*BUS空*/
@@ -537,15 +546,19 @@ static void handle_signal(int sig_no){
 
 	switch(sig_no){
 		case SIGINT:
-			PRINT("receive SIGINT,ready to exit...");
+			write_log(LOG_NOTIFY , "receive SIGINT,ready to exit...");
 			/*脱离BUS*/
 			iret = close_bus(connect_server_id , logic_server_id);
 			if(iret < 0){
-				log_error("connect server: detach bus to connect failed!");
+				write_log(LOG_ERR , "connect server: detach bus to connect failed!");
 			}
-			PRINT("connect server: detach bus to connect success!");
+			write_log(LOG_NOTIFY , "connect server: detach bus to connect success!");
 			/*销毁内存池*/
-			delete_mem_poll(poll);
+			iret = delete_mem_poll(poll);
+			if(iret < 0){
+				write_log(LOG_ERR , "connect server: delete_mem_poll failed!");
+			}
+			write_log(LOG_NOTIFY , "connect server: delete_mem_poll success!");
 			exit(0);
 		break;
 

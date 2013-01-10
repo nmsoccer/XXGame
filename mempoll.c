@@ -54,7 +54,7 @@ int delete_mem_poll(xxmem_poll *poll){
 		}
 
 		/*删除used node*/
-		printf("delete: index %d: there are %d used blocks\n" , i , poll->all_index[i].used_count);
+//		printf("delete: index %d: there are %d used blocks\n" , i , poll->all_index[i].used_count);
 		now = poll->all_index[i].used;
 		while(1){
 			if(!now){
@@ -68,7 +68,7 @@ int delete_mem_poll(xxmem_poll *poll){
 		}
 
 		/*删除free node*/
-		printf("detle: index %d: there are %d free blocks\n" , i , poll->all_index[i].free_count);
+//		printf("detle: index %d: there are %d free blocks\n" , i , poll->all_index[i].free_count);
 		now = poll->all_index[i].free;
 		while(1){
 			if(!now){
@@ -119,7 +119,7 @@ void *xx_alloc_mem(xxmem_poll *poll , int size){
 		return NULL;
 	}
 
-	printf("before alloc index %d there are %d free %d used\n" , index , poll->all_index[index].free_count , poll->all_index[index].used_count);
+//	printf("before alloc index %d there are %d free %d used\n" , index , poll->all_index[index].free_count , poll->all_index[index].used_count);
 	/*如果没有空闲块则新分配*/
 	if(poll->all_index[index].free_count == 0){
 		printf("malloc new size: %d\n" , index * ALLOC_BASE_SIZE);

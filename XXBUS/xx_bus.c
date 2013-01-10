@@ -13,7 +13,7 @@
 #include "xx_bus.h"
 //#include "common.h"
 
-#define INT_CONTAINER_LEN (MAX_SERV_PROC * 2)
+#define INT_CONTAINER_LEN (MAX_SERV_COUNT * ((MAX_SERV_COUNT - 1) >> 1))	/*假设MAX_SERV_COUNT中任意两个进程建立链接C23 2*/
 
 /*用于存储不同进程的bus_interface;*/
 typedef struct _procs_interface{
@@ -40,14 +40,20 @@ static int recv_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , S
  * @parm proc2: 利用BUS通信的另一个进程标志
  * @return:成功返回0；失败返回-1
  */
-int open_bus(u32 proc1 , u32 proc2){
+int open_bus(proc_t proc1 , proc_t proc2){
 	int index = 0;
 	proc_t or_procs = 0;
 	bus_interface *interface_of_procs = NULL;
 	int icount = 0;
 
-	/*擦除每个进程全局ID的线号，然后相或*/
-	or_procs = (proc1 & 0x00FFFFFF) | (proc2 & 0x00FFFFFF);
+	/*如果不同线则不能发送*/
+	if(proc1 & GAME_LINE_MASK != proc2 & GAME_LINE_MASK){
+		write_log(LOG_ERR , "open_bus failed!:proc1:%x < ->  proc2:%x in different line" , proc1 , proc2);
+		return -1;
+	}
+
+	/*获得每个进程全局ID的进程号，然后相或*/
+	or_procs = (proc1 & GAME_SERV_MASK) | (proc2 & GAME_SERV_MASK);
 
 	/*获取与通信进程相关的interface在interface_container中的偏移*/
 	/*找到一个空白项。首先hash之，如果有冲突则往后加*/
@@ -57,15 +63,17 @@ int open_bus(u32 proc1 , u32 proc2){
 			break;
 		}
 		if(interface_container[index].interface != NULL && interface_container[index].or_two_proc == or_procs){	/*BUS已经打开*/
-			printf("bus between %d <-> %d is opened!\n" , proc1 , proc2);
-//			write_log(LOG_INFO , "reopen bus between %d <-> %d!\n" , proc1 , proc2);
+
+#ifdef DEBUG
+			printf("bus between %d <-> %d is opened already!!\n" , proc1 , proc2);
+#endif
 			return 0;
 		}
 		index = (index + 1) % INT_CONTAINER_LEN;
 
 		icount++;
 		if(icount >= INT_CONTAINER_LEN){/*用于避免死循环。这种情况理论上来说一定不出现*/
-			printf("open bus some bad error happened!\n");
+			write_log(LOG_ERR , "open bus some bad error happened!\n");
 			return -1;
 		}
 
@@ -92,9 +100,22 @@ int open_bus(u32 proc1 , u32 proc2){
  * @parm proc2: 利用BUS通信的另一个进程标志
  * @return:成功返回0；失败返回-1
  */
-int close_bus(u32 proc1 , u32 proc2){
+int close_bus(proc_t proc1 , proc_t proc2){
 	int index = -1;
 	bus_interface *interface_of_procs = NULL;
+
+
+	/*如果不同世界则关闭失败*/
+	if(proc1 & GAME_WORLD_MASK != proc2 & GAME_WORLD_MASK){
+		write_log(LOG_ERR , "close_bus failed!:proc1:%x < ->  proc2:%x in different world" , proc1 , proc2);
+		return -1;
+	}
+
+	/*如果不同线则关闭失败*/
+	if(proc1 & GAME_LINE_MASK != proc2 & GAME_LINE_MASK){
+		write_log(LOG_ERR , "close_bus failed!:proc1:%x < ->  proc2:%x in different line" , proc1 , proc2);
+		return -1;
+	}
 
 	/*获取与通信进程相关的interface在interface_container中的偏移*/
 	index = get_index_container(proc1 , proc2);
@@ -128,16 +149,28 @@ int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package){
 	int index = -1;
 	int iret = -1;
 
+	/*如果不同世界不能发送*/
+	if(recv_proc & GAME_WORLD_MASK != send_proc & GAME_WORLD_MASK){
+		write_log(LOG_ERR , "send_bus_pkg failed!:send_proc:%x  ->  recv_proc:%x in different world" , send_proc , recv_proc);
+		return -1;
+	}
+
+	/*如果不同线则不能发送*/
+	if(recv_proc & GAME_LINE_MASK != send_proc & GAME_LINE_MASK){
+		write_log(LOG_ERR , "send_bus_pkg failed!:send_proc:%x  ->  recv_proc:%x in different line" , send_proc , recv_proc);
+		return -1;
+	}
+
 	/*获取与通信进程相关的interface在interface_container中的偏移*/
 	index = get_index_container(recv_proc , send_proc);
 	if(index == -1){	/*通信BUS并未建立*/
-		printf("send bus failed!\n");
+//		printf("send bus failed!\n");
+		write_log(LOG_ERR , "send_bus_pkg:get_index_container index = -1");
 		return -1;
 	}
 
 	/*send*/
 	iret = send_bus(recv_proc , send_proc , interface_container[index].interface , package);
-
 	return iret;
 }
 
@@ -155,16 +188,28 @@ int get_bus_pkg(u32 recv_proc , u32 send_proc , SSPACKAGE *package){
 	int index = -1;
 	int iret = -1;
 
+	/*如果不同世界则不能接收*/
+	if(recv_proc & GAME_WORLD_MASK != send_proc & GAME_WORLD_MASK){
+		write_log(LOG_ERR , "recv_bus_pkg failed!:send_proc:%x  ->  recv_proc:%x in different world" , send_proc , recv_proc);
+		return -1;
+	}
+
+	/*如果不同线则不能接收*/
+	if(recv_proc & GAME_LINE_MASK != send_proc & GAME_LINE_MASK){
+		write_log(LOG_ERR , "recv_bus_pkg failed!:send_proc:%x  ->  recv_proc:%x in different line" , send_proc , recv_proc);
+		return -1;
+	}
+
 	/*获取与通信进程相关的interface在interface_container中的偏移*/
 	index = get_index_container(recv_proc , send_proc);
 	if(index == -1){	/*通信BUS并未建立*/
-		printf("recv bus failed!\n");
+//		printf("recv bus failed!\n");
+		write_log(LOG_ERR , "recv_bus_pkg:get_index_container index = -1");
 		return -1;
 	}
 
 	/*recv*/
 	iret = recv_bus(recv_proc , send_proc , interface_container[index].interface , package);
-
 	return iret;
 }
 
@@ -177,8 +222,8 @@ static int get_index_container(proc_t proc1 , proc_t proc2){
 	proc_t or_procs = 0;
 	int icount = 0;
 
-	/*擦除每个进程全局ID的线号，然后相或*/
-	or_procs = (proc1 & 0x00FFFFFF) | (proc2 & 0x00FFFFFF);
+	/*获得每个进程全局ID的进程号，然后相或*/
+	or_procs = (proc1 & GAME_SERV_MASK) | (proc2 & GAME_SERV_MASK);
 
 	/*获取与通信进程相关的interface在interface_container中的偏移*/
 	/*首先hash之，如果有冲突则往后加*/
@@ -214,20 +259,13 @@ static bus_interface *attach_bus(proc_t proc1 , proc_t proc2){
 	/*为该进程链接proc1与proc2的BUS*/
 	key = proc1 | proc2;
 
-
-
 	ishm_id = shmget(key , 0 , 0);
-//	ishm_id = shmget(key , size , BUS_MODE_FLAG);
 	if(ishm_id < 0 ){
-		printf("attach_bus: attach bus failed!\n");
-//		write_log(LOG_ERR , "attach_bus between %d <-> %d:call shmget failed!" , proc1 , proc2);
 		return NULL;
 	}
 
 	pstbus_interface = (bus_interface *)shmat(ishm_id , NULL , 0);	/*设置该管道INTEFACE*/
 	if(!pstbus_interface){
-		printf("attach_bus: failed!\n");
-//		write_log(LOG_ERR , "attach_bus between %d <-> %d:call shmat failed!" , proc1 , proc2);
 		return NULL;
 	}
 
@@ -260,32 +298,51 @@ static int detach_bus(bus_interface *bus){
  * -1：出现错误
  * -2: BUS满
  */
-static int send_bus(u32 recv_proc , u32 send_proc , bus_interface *bus , SSPACKAGE *package){
-//	PRINT("sending bus...");
+static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , SSPACKAGE *package){
 	bus_channel *channel = NULL;	/*发送管道*/
-//	char *dest = 0xb784b4888;
 
 	if(!bus || !package){
 		return -1;
 	}
 
 	/*检验BUS与收发进程ID是否一致*/
-	if(recv_proc == bus->udwproc_id_recv_ch1){	/*如果接收进程使用channel1，发送进程使用channel2*/
-		if(send_proc != bus->udwproc_id_recv_ch2){
-			return -1;
-		}
-		channel = &bus->channel_one;	/*发送进程使用channel1发送*/
-
-	}else if(recv_proc == bus->udwproc_id_recv_ch2){ /*如果接收进程使用channel2，发送进程使用channel1*/
-		if(send_proc != bus->udwproc_id_recv_ch1){
-			return -1;
-		}
-		channel = &bus->channel_two;	/*发送进程使用channel2发送*/
-	}else{
+	if((recv_proc | send_proc) != (bus->udwproc_id_recv_ch1 | bus->udwproc_id_recv_ch2)){
 		return -1;
 	}
 
-//	printf("c1:%x; c2:%x; connect:%x head\n" , &bus->channel_one , &bus->channel_two , channel);
+	/*寻找发送管道*/
+	do{
+		if(recv_proc == bus->udwproc_id_recv_ch1){	/*接收进程使用channel1则使用channel1发送*/
+			channel = &bus->channel_one;
+			break;
+		}
+
+		if(recv_proc == bus->udwproc_id_recv_ch2){	/*接收进程使用channel2则使用channel2发送*/
+			channel = &bus->channel_two;
+			break;
+		}
+
+		return -1;
+
+	}while(0);
+
+
+/*
+	if(recv_proc == bus->udwproc_id_recv_ch1){	如果接收进程使用channel1，发送进程使用channel2
+		if(send_proc != bus->udwproc_id_recv_ch2){
+			return -1;
+		}
+		channel = &bus->channel_one;	/*发送进程使用channel1发送
+
+	}else if(recv_proc == bus->udwproc_id_recv_ch2){ /*如果接收进程使用channel2，发送进程使用channel1
+		if(send_proc != bus->udwproc_id_recv_ch1){
+			return -1;
+		}
+		channel = &bus->channel_two;	/*发送进程使用channel2发送
+	}else{
+		return -1;
+	}*/
+
 	/*使用channel发送*/
 	if(channel->package_num == CHANNEL_MAX_PACKAGE){	/*发送管道已满*/
 		return -2;
@@ -296,7 +353,6 @@ static int send_bus(u32 recv_proc , u32 send_proc , bus_interface *bus , SSPACKA
 	 * 读管道进程将读到一个空包
 	 */
 //	get_spin_lock(&channel->spin_lock);	/*上锁*/
-//	memcpy(channel->tail , "helloworld" , 9);
 	memcpy(&channel->data[channel->tail] , package , sizeof(SSPACKAGE));
 	channel->tail = (channel->tail + 1) % CHANNEL_MAX_PACKAGE;
 	channel->package_num++;

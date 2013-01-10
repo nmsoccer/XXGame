@@ -32,14 +32,11 @@ int main(int argc , char **argv){
 	SSPACKAGE sspackage;
 
 	struct sigaction sig_act;	/*信号动作*/
-
-
-
 	int iret;
 
 	/*检测参数*/
 	if(argc < 2){
-		printf("argc < 2 , please input more information like: logic_server LOGIC1\n");
+		write_log(LOG_ERR , "logic_server:argc < 2 , please input more information like: logic_server line1\n");
 		return -1;
 	}
 
@@ -52,38 +49,38 @@ int main(int argc , char **argv){
 	/*链接BUS*/
 	do{
 		if(strcasecmp(argv[1] , "line1") == 0){	/*1线*/
-			connect_server_id = GAME_LINE_1 | GAME_CONNECT_SERVER;
-			logic_server_id = GAME_LINE_1 | GAME_LOGIC_SERVER;
-			log_server_id = GAME_LINE_1 | GAME_LOG_SERVER;
+			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_CONNECT_SERVER;
+			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOGIC_SERVER;
+			log_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOG_SERVER;
 			break;
 		}
 		if(strcasecmp(argv[1] , "line2") == 0){	/*2线*/
-			connect_server_id = GAME_LINE_2 | GAME_CONNECT_SERVER;
-			logic_server_id = GAME_LINE_2 | GAME_LOGIC_SERVER;
-			log_server_id = GAME_LINE_2 | GAME_LOG_SERVER;
+			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_CONNECT_SERVER;
+			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOGIC_SERVER;
+			log_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOG_SERVER;
 			break;
 		}
 
-		printf("illegal argument 1:%s , exit!" , argv[1]);
+		write_log(LOG_ERR , "logic_server:illegal line name:%s , exit!" , argv[1]);
 		return -1;
 	}while(0);
 
 	iret = open_bus(connect_server_id , logic_server_id);
 	if(iret < 0){
-		printf("open bus failed!\n");
+		write_log(LOG_ERR , "logic_server:open bus connect <-> logic failed!");
+		return -1;
 	}
 
-	PRINT("logic server starts...");
+	/*start success*/
+	write_log(LOG_INFO , "start logic_server %s success!" , argv[1]);
 
 	/*主循环*/
 	while(1){
-//		iret = recv_bus(logic_server_id , connect_server_id , bus_to_connect , &sspackage);
 		iret = get_bus_pkg(logic_server_id , connect_server_id , &sspackage);
 		if(iret == -1){	/*读包出错*/
-			log_error("logic server: recv bus failed!");
+			write_log(LOG_ERR , "logic server: recv bus failed!");
 		}
 		if(iret == -2){	/*BUS为空*/
-//			PRINT("bus is empty!");
 			sleep(1);
 			continue;
 		}
@@ -91,11 +88,9 @@ int main(int argc , char **argv){
 
 
 		strcat(sspackage.cs_data.data.acdata , "logic!");
-//		iret = send_bus(connect_server_id , logic_server_id , bus_to_connect , &sspackage);
 		iret = send_bus_pkg(connect_server_id , logic_server_id , &sspackage);
 		while(iret != 0){
 			PRINT("logic server sending bus...");
-//			send_bus(connect_server_id , logic_server_id , bus_to_connect , &sspackage);
 			send_bus_pkg(connect_server_id , logic_server_id , &sspackage);
 			sleep(1);
 		}
@@ -118,7 +113,7 @@ static void handle_signal(int sig_no){
 			/*脱离BUS*/
 			iret = close_bus(connect_server_id , logic_server_id);
 			if(iret < 0){
-				log_error("logic server: detach bus to connect failed!");
+				write_log(LOG_ERR , "logic server: detach bus to connect failed!");
 			}
 			PRINT("logic server: detach bus to connect success!");
 		break;

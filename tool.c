@@ -19,10 +19,10 @@
 /*
  * 出错记录
  */
-int log_error(char *str){
-	printf("%s\n" , str);
-	return 0;
-}
+//int log_error(char *str){
+//	printf("%s\n" , str);
+//	return 0;
+//}
 
 /*
  * 记录日志信息
@@ -62,19 +62,30 @@ int write_log(u32 type , ...){
 		strncat(&buff[index] , "@LOG INFO@" , sizeof(buff) - index);	/*日志类型*/
 		index = strlen(buff);
 		vsnprintf(&buff[index] , sizeof(buff) - index , fmt , arg_list);	/*log信息*/
-		printf("in write_log:%s\n" , buff);
+
+#ifdef DEBUG
+		printf("tty:%s\n" , buff);
+#endif
+		break;
+	case LOG_NOTIFY:
+		strncat(&buff[index] , "@LOG NOTIFY@" , sizeof(buff) - index);	/*日志类型*/
+		index = strlen(buff);
+		vsnprintf(&buff[index] , sizeof(buff) - index , fmt , arg_list);	/*log信息*/
+
+		printf("tty:%s\n" , buff);
 		break;
 	case LOG_ERR:
 		strncat(&buff[index] , "@LOG ERR@" , sizeof(buff) - index);	/*日志类型*/
 		index = strlen(buff);
 		vsnprintf(&buff[index] , sizeof(buff) - index , fmt , arg_list);	/*log信息*/
-		printf("in write_log:%s\n" , buff);
+
+		printf("tty:%s\n" , buff);
 		break;
 	case LOG_DUMP:
 		strncat(&buff[index] , "@LOG DUMP@" , sizeof(buff) - index);	/*日志类型*/
 		index = strlen(buff);
 		vsnprintf(&buff[index] , sizeof(buff) - index , fmt , arg_list);	/*log信息*/
-		printf("in write_log:%s\n" , buff);
+		printf("tty:!!:%s\n" , buff);
 		exit(-1);
 	default:
 		return -1;
@@ -92,6 +103,7 @@ int write_log(u32 type , ...){
 		return -1;
 	}
 
+	buff[strlen(buff)] = '\n';
 	fputs(buff , log_file);
 	fclose(log_file);
 
@@ -260,27 +272,30 @@ int set_sock_buff_size(int sock_fd , int send_size , int recv_size){
 	/*设置缓冲区大小*/
 	iRet = setsockopt(sock_fd , SOL_SOCKET , SO_SNDBUF , &send_size , opt_len);
 	if(iRet < 0){
-		log_error("set sock send buff failed!");
+		write_log(LOG_ERR , "set sock send buff failed!");
 		return -1;
 	}
 	iRet = setsockopt(sock_fd , SOL_SOCKET , SO_RCVBUF , &recv_size , opt_len);
 	if(iRet < 0){
-		log_error("set sock recv buff failed!");
+		write_log(LOG_ERR , "set sock recv buff failed!");
 		return -1;
 	}
 
 	/*打印设置之后的缓冲区长度*/
 	iRet = getsockopt(sock_fd , SOL_SOCKET , SO_SNDBUF , &s_size , &opt_len);
 	if(iRet < 0){
-		log_error("get sock send buff failed!");
+		write_log(LOG_ERR , "get sock send buff failed!");
 		return -1;
 	}
 	iRet = getsockopt(sock_fd , SOL_SOCKET , SO_RCVBUF , &r_size , &opt_len);
 	if(iRet < 0){
-		log_error("get sock recv buff failed!");
+		write_log(LOG_ERR , "get sock recv buff failed!");
 		return -1;
 	}
+
+#ifdef DEBUG
 	printf("new send buff size: %dK; recv buff size: %dK\n" , s_size/1024 , r_size/1024);
+#endif
 
 	return 0;
 }

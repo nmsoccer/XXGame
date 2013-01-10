@@ -34,25 +34,27 @@ int main(int argc , char **argv){
 
 	/*check*/
 	if(argc < 2){
-		printf("error: argument is not enough!\n");
+//		printf("error: argument is not enough!\n");
+		write_log(LOG_ERR , "create_bus:argc < 2 , please input more information like: ./create_bus line1\n");
 		return -1;
 	}
 
 	do{
 		if(strcasecmp(argv[1] , "line1") == 0){	/*1线*/
-			connect_server_id = GAME_LINE_1 | GAME_CONNECT_SERVER;
-			logic_server_id = GAME_LINE_1 | GAME_LOGIC_SERVER;
-			log_server_id = GAME_LINE_1 | GAME_LOG_SERVER;
+			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_CONNECT_SERVER;
+			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOGIC_SERVER;
+			log_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOG_SERVER;
 			break;
 		}
 		if(strcasecmp(argv[1] , "line2") == 0){	/*2线*/
-			connect_server_id = GAME_LINE_2 | GAME_CONNECT_SERVER;
-			logic_server_id = GAME_LINE_2 | GAME_LOGIC_SERVER;
-			log_server_id = GAME_LINE_2 | GAME_LOG_SERVER;
+			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_CONNECT_SERVER;
+			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOGIC_SERVER;
+			log_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOG_SERVER;
 			break;
 		}
 
-		printf("illegal argument 1:%s , exit!" , argv[1]);
+		write_log(LOG_ERR , "create_bus:illegal argument 1:%s , exit!" , argv[1]);
+//		printf("illegal argument 1:%s , exit!" , argv[1]);
 		return -1;
 	}while(0);
 
@@ -60,7 +62,6 @@ int main(int argc , char **argv){
 
 	printf("create bus...\n");
 	/*创建connect_server与logic_server 的BUS*/
-
 /*	key = ftok(PATH_NAME , GAME_CONNECT_SERVER1 + GAME_LOGIC_SERVER1);
 //	if(key < 0){
 //		log_error("create_bus: FTOK of Line1 failed!");
@@ -74,17 +75,16 @@ int main(int argc , char **argv){
 	if(size % PAGE_SIZE != 0){	/*必须是页面的整数倍*/
 		size = (size / PAGE_SIZE + 1) * PAGE_SIZE;
 	}
-//	printf("alloc size is: %x\n" , size);
 
 	ishm_id = shmget(key , size , IPC_CREAT | IPC_EXCL | BUS_MODE_FLAG);
 	if(ishm_id < 0 ){
-		log_error("create_bus: Create bus between connect and logic failed!");
+		write_log(LOG_ERR , "create_bus: shmget bus between connect and logic failed!");
 		return -1;
 	}
 
 	pstbus_interface = (bus_interface *)shmat(ishm_id , NULL , 0);	/*设置该管道INTEFACE*/
 	if(!pstbus_interface){
-		log_error("Attach bus between connect and logic failed!");
+		write_log(LOG_ERR , "create_bus:shmat bus between connect and logic failed!");
 		return -1;
 	}
 
@@ -93,11 +93,11 @@ int main(int argc , char **argv){
 	pstbus_interface->udwproc_id_recv_ch2 = logic_server_id;		/*管道2用于LOGIC收包*/
 
 
-	printf("create bus of connect and logic success...%x:\n" , pstbus_interface);
-	printf("pstbus_interface: %d vs %d\n" , pstbus_interface ->udwproc_id_recv_ch1 , pstbus_interface ->udwproc_id_recv_ch2);
+	write_log(LOG_INFO , "create_bus:create bus of connect and logic success...");
+#ifdef DEBUG
+	printf("pstbus_interface: %x vs %x\n" , pstbus_interface ->udwproc_id_recv_ch1 , pstbus_interface ->udwproc_id_recv_ch2);
 	printf("channel one: %x ~ %x\n" , pstbus_interface->channel_one.data , &pstbus_interface->channel_one.data[CHANNEL_MAX_PACKAGE]);
 	printf("channel two: %x ~ %x\n" , pstbus_interface->channel_two.data , &pstbus_interface->channel_two.data[CHANNEL_MAX_PACKAGE]);
-
-	PRINT("create bus from connect to logic success!");
+#endif
 	return 0;
 }
