@@ -144,7 +144,15 @@ int strsplit(const char *src_str , int c , char *sub_arrays , int sub_count , in
 		}
 
 		end = strchr(start , c);
-		if(end == NULL){
+		if(end == NULL){	/*没有找到分隔符*/
+			if(start[0] != 0){	/*初始不是0说明是一个不包含分隔符的有效字符串token，仍然放入*/
+				if(strlen(start) <= sub_len - 1){
+					memcpy(sub_arrays + count*sub_len , start , strlen(start));
+				}else{
+					memcpy(sub_arrays + count*sub_len , start , sub_len-1);
+				}
+				count++;
+			}
 			break;
 		}
 
@@ -294,7 +302,7 @@ int set_sock_buff_size(int sock_fd , int send_size , int recv_size){
 	}
 
 #ifdef DEBUG
-	printf("new send buff size: %dK; recv buff size: %dK\n" , s_size/1024 , r_size/1024);
+//	printf("new send buff size: %dK; recv buff size: %dK\n" , s_size/1024 , r_size/1024);
 #endif
 
 	return 0;

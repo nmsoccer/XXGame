@@ -30,8 +30,8 @@ static int get_index_container(proc_t proc1 , proc_t proc2);
 
 static bus_interface *attach_bus(proc_t proc1 , proc_t proc2);
 static int detach_bus(bus_interface *bus);
-static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , SSPACKAGE *package);
-static int recv_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , SSPACKAGE *package);
+static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , sspackage_t *package);
+static int recv_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , sspackage_t *package);
 
 /*
  * 打开BUS，准备通信
@@ -145,7 +145,7 @@ int close_bus(proc_t proc1 , proc_t proc2){
  * -1：出现错误
  * -2: BUS满
  */
-int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package){
+int send_bus_pkg(proc_t recv_proc , proc_t send_proc , sspackage_t *package){
 	int index = -1;
 	int iret = -1;
 
@@ -184,7 +184,7 @@ int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package){
  * -1：出现错误
  * -2: BUS空
  */
-int get_bus_pkg(u32 recv_proc , u32 send_proc , SSPACKAGE *package){
+int get_bus_pkg(u32 recv_proc , u32 send_proc , sspackage_t *package){
 	int index = -1;
 	int iret = -1;
 
@@ -213,6 +213,91 @@ int get_bus_pkg(u32 recv_proc , u32 send_proc , SSPACKAGE *package){
 	return iret;
 }
 
+/*
+ * 链接共享资源地址
+ * @param res_type:资源类型
+ * @world_id:世界ID
+ * @line_id:线ID
+ * @return:
+ * 失败:NULL
+ * 成功:资源地址
+ */
+void *attach_shm_res(int res_type , int world_id , int line_id){
+	void *addr;
+	int ishm_id;
+	key_t key;
+
+	/*CHECK*/
+	if(res_type <= 0 || world_id <= 0 || line_id <= 0){
+		return NULL;
+	}
+
+	/*HANDLE*/
+	key = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_RES | res_type;
+
+	ishm_id = shmget(key , 0 , 0);
+	if(ishm_id < 0 ){
+		write_log(LOG_ERR , "attach_shm_res: shmget shm res %x failed!" , key);
+		return NULL;
+	}
+
+	addr = shmat(ishm_id , NULL , 0);
+	if(!addr){
+		write_log(LOG_ERR , "attach_shm_res: shmat shm res %x failed!" , key);
+		return NULL;
+	}
+
+	write_log(LOG_INFO , "attach_shm_res: attach shm res %x success!!" , key);
+	return addr;
+}
+
+/*
+ * 剥离该进程具有的共享资源
+ * @param res_type:资源类型
+ * @world_id:世界ID
+ * @line_id:线ID
+ * @return:
+ * 失败:-1
+ * 成功:0
+ */
+int detach_shm_res(int res_type , int world_id , int line_id){
+	int ishm_id;
+	key_t key;
+	void *addr;
+	int iret;
+
+	/*CHECK*/
+	if(res_type <= 0 || world_id <= 0 || line_id <= 0){
+		return -1;
+	}
+
+	/*HANDLE*/
+	key = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_RES | res_type;
+
+	ishm_id = shmget(key , 0 , 0);
+	if(ishm_id < 0 ){
+		write_log(LOG_ERR , "detach_shm_res: shmget shm res %x failed!" , key);
+		return -1;
+	}
+
+	addr = shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
+	if(!addr){
+		write_log(LOG_ERR , "detach_shm_res: shmat shm res %x failed!" , key);
+		return -1;
+	}
+
+	iret = shmdt(addr);
+	if(iret == -1){
+		write_log(LOG_ERR , "detach_shm_res: shmdt shm res %x failed!" , key);
+		return -1;
+	}
+
+	write_log(LOG_INFO , "detach_shm_res: detach shm res %x success!!" , key);
+	return iret;
+}
+
+
+/////////////////////////////////////////////////////LOCAL FUNC//////////////////////////////////////
 
 /*根据proc1与proc2来得到与之相关的interface在interface_container中的偏移
  * 成功返回index失败返回-1
@@ -298,7 +383,7 @@ static int detach_bus(bus_interface *bus){
  * -1：出现错误
  * -2: BUS满
  */
-static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , SSPACKAGE *package){
+static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , sspackage_t *package){
 	bus_channel *channel = NULL;	/*发送管道*/
 
 	if(!bus || !package){
@@ -353,7 +438,7 @@ static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , S
 	 * 读管道进程将读到一个空包
 	 */
 //	get_spin_lock(&channel->spin_lock);	/*上锁*/
-	memcpy(&channel->data[channel->tail] , package , sizeof(SSPACKAGE));
+	memcpy(&channel->data[channel->tail] , package , sizeof(sspackage_t));
 	channel->tail = (channel->tail + 1) % CHANNEL_MAX_PACKAGE;
 	channel->package_num++;
 //	drop_spin_lock(&channel->spin_lock);	/*解锁*/
@@ -373,7 +458,7 @@ static int send_bus(proc_t recv_proc , proc_t send_proc , bus_interface *bus , S
  * -1：出现错误
  * -2: BUS空
  */
-static int recv_bus(u32 recv_proc , u32 send_proc , bus_interface *bus , SSPACKAGE *package){
+static int recv_bus(u32 recv_proc , u32 send_proc , bus_interface *bus , sspackage_t *package){
 	bus_channel *channel = NULL;	/*接收管道*/
 
 	if(!bus || !package){
@@ -408,7 +493,7 @@ static int recv_bus(u32 recv_proc , u32 send_proc , bus_interface *bus , SSPACKA
 	 * 再读出该包之前写管道进程已经将其覆盖
 	 */
 //	get_spin_lock(&channel->spin_lock);	/*上锁*/
-	memcpy(package ,  &channel->data[channel->head] , sizeof(SSPACKAGE));
+	memcpy(package ,  &channel->data[channel->head] , sizeof(sspackage_t));
 	channel->head = (channel->head + 1) % CHANNEL_MAX_PACKAGE;
 	channel->package_num--;
 //	drop_spin_lock(&channel->spin_lock);	/*解锁*/

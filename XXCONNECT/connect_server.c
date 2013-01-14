@@ -30,8 +30,6 @@
 /*
  * MAX LISTEN CLIENT
  */
-#define MAX_CONNECT_CLIENTS 1024	/*进程能够支持打开的最多文件描述符*/
-
 #define MAX_LISTEN_CLIENTS MAX_CONNECT_CLIENTS
 
 /*用于实际处理客户端TCP SOCKET链接的循环。
@@ -46,7 +44,7 @@ void *connect_interface(void *arg);*/
  */
 struct _cspackage_node{
 	struct _cspackage_node *node_next;
-	CSPACKAGE cs_data;
+	cspackage_t cs_data;
 };
 typedef struct _cspackage_node CSPACKAGE_NODE;
 
@@ -71,10 +69,12 @@ typedef struct{
  */
 //static client_connect client_connects[MAX_CONNECT_CLIENTS];
 static CLIENT client;
-/*与其他进程通信*/
-static proc_t connect_server_id;	/*该线链接服务进程的全局ID*/
-static proc_t logic_server_id;		/*该线逻辑服务器进程的全局ID*/
-static proc_t log_server_id;			/*该线LOG服务器进程的全局ID*/
+/*标识信息*/
+static int world_id;		/*世界ID*/
+static int line_id;		/*线ID*/
+static proc_t connect_server_id;	/*链接服务进程的全局ID*/
+static proc_t logic_server_id;		/*逻辑服务器进程的全局ID*/
+static proc_t log_server_id;			/*LOG服务器进程的全局ID*/
 //static bus_interface *bus_to_logic = NULL;
 
 /*connect_server的ID*/
@@ -87,12 +87,12 @@ static xxmem_poll *poll;
 /*
  * 读取数据
  */
-static int read_socket(int isock_fd , CSPACKAGE *pstcspackage);
+static int read_socket(int isock_fd , cspackage_t *pstcspackage);
 
 /*
  * 发送数据
  */
-static int write_socket(int isock_fd , CSPACKAGE *pstcspackage);
+static int write_socket(int isock_fd , cspackage_t *pstcspackage);
 
 /*
  * 发送某个具体fd的数据包队列
@@ -135,6 +135,8 @@ int main(int argc , char **argv){
 	int iepoll_fd;	/*epoll的文件描述符*/
 	int iactive_fds;	/*通过epoll活跃的fd数目*/
 	int handle_fd;	/*循环中处理的fd*/
+	char arg_segs[ARG_SEG_COUNT][ARG_CONTENT_LEN];	/*参数内容*/
+	int icount;
 
 	struct sockaddr_in stserv_addr;
 	struct sockaddr_in stcli_addr;
@@ -143,11 +145,11 @@ int main(int argc , char **argv){
 	struct epoll_event stepoll_event;
 	struct epoll_event astepoll_events[MAX_CONNECT_CLIENTS + 1];	/*一个FD对应一个event*/
 
-	CSPACKAGE stcspackage_recv;	/*收发客户端的包*/
-	CSPACKAGE stcspackage_send;
+//	CSPACKAGE stcspackage_recv;	/*收发客户端的包*/
+//	CSPACKAGE stcspackage_send;
 
-	SSPACKAGE sspackage_recv;	/*收发其他服务器进程的包*/
-	SSPACKAGE sspackage_send;
+	sspackage_t sspackage_recv;	/*收发其他服务器进程的包*/
+//	sspackage_t sspackage_send;
 
 //	CSPACKAGE_NODE *pstcspackage_node = NULL;
 
@@ -161,9 +163,30 @@ int main(int argc , char **argv){
 
 	/*检测参数*/
 	if(argc < 2){
-		write_log(LOG_ERR , "connect_server:argc < 2 , please input more information like: connect_server line1\n");
+		write_log(LOG_ERR , "connect_server:argc < 2 , please input more information worldid.lineid.xxxx , like:1.1.xxxx");
 		return -1;
 	}
+
+	/*解析参数字符串*/
+	icount = strsplit(argv[1] , '.' , arg_segs , ARG_SEG_COUNT , ARG_CONTENT_LEN);
+	if(icount < 2){
+		write_log(LOG_ERR , "connect_server:illegal argument 1:%s , exit!" , argv[1]);
+		return -1;
+	}
+	world_id = atoi(arg_segs[0]);	/*世界ID*/
+	line_id = atoi(arg_segs[1]);	/*线ID*/
+
+	if(world_id<=0 || world_id>MAX_WORLD_COUNT || line_id<=0 || line_id>MAX_LINE_COUNT){	/*ID不能小于0或超出最大*/
+		write_log(LOG_ERR , "connect_server:illegal argument1:%s , exit!" , argv[1]);
+		return -1;
+	}
+
+#ifdef DEBUG
+	printf("world_id:%d , line_id:%d\n" , world_id , line_id);
+#endif
+	connect_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_CONNECT_SERVER;
+	logic_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_LOGIC_SERVER;
+	log_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_LOG_SERVER;
 
 	/*Create sockfd*/
 	iserv_fd = socket(PF_INET , SOCK_STREAM , 0 );
@@ -220,24 +243,6 @@ int main(int argc , char **argv){
 	}
 
 	/*链接BUS*/
-	do{
-		if(strcasecmp(argv[1] , "line1") == 0){	/*1线*/
-			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_CONNECT_SERVER;
-			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOGIC_SERVER;
-			log_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOG_SERVER;
-			break;
-		}
-		if(strcasecmp(argv[1] , "line2") == 0){	/*2线*/
-			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_CONNECT_SERVER;
-			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOGIC_SERVER;
-			log_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOG_SERVER;
-			break;
-		}
-
-		write_log(LOG_ERR , "connect_server:illegal line name:%s , exit!" , argv[1]);
-		return -1;
-	}while(0);
-
 	iRet = open_bus(connect_server_id , logic_server_id);
 	if(iRet < 0){
 		write_log(LOG_ERR , "connect_server:open bus connect <-> logic failed!");
@@ -267,7 +272,7 @@ int main(int argc , char **argv){
 				write_log(LOG_INFO , "connect_server:accept a new client: %d\n" , iaccept_fd);
 				/*设置接收的socket属性*/
 				set_nonblock(iaccept_fd);	/*设置为非阻塞*/
-				set_sock_buff_size(iaccept_fd , 10 * sizeof(CSPACKAGE) , 5 * sizeof(CSPACKAGE));	/*设置socket缓冲区大小*/
+				set_sock_buff_size(iaccept_fd , 10 * sizeof(cspackage_t) , 5 * sizeof(cspackage_t));	/*设置socket缓冲区大小*/
 
 				/*将该socket加入client*/
 				client.active_fds[client.max_active_fd] = iaccept_fd;
@@ -294,18 +299,18 @@ int main(int argc , char **argv){
 			if(astepoll_events[i].events & EPOLLIN){
 				handle_fd = astepoll_events[i].data.fd;
 				/*read client*/
-				memset(&sspackage_recv , 0 , sizeof(SSPACKAGE));
+				memset(&sspackage_recv , 0 , sizeof(sspackage_t));
 				sspackage_recv.sshead.client_fd = handle_fd;
 				iRet = read_socket(handle_fd , &sspackage_recv.cs_data);
 
-				if(iRet == sizeof(CSPACKAGE)){
+				if(iRet == sizeof(cspackage_t)){
 #ifdef DEBUG
 					printf(">>>read package!\n");
 #endif
 				}
 				else
 				if(iRet > 0){	/*读的数据小于一个包长*/
-					write_log(LOG_ERR , "connect server: read pakcage bytes len < CSPACKAGE!");
+					write_log(LOG_ERR , "connect server: read pakcage bytes len %d < cspackage size %d!" , iRet , sizeof(cspackage_t));
 				}
 				else{	/*没有数据*/
 					write_log(LOG_INFO , "connect server: nothing to read!");
@@ -315,7 +320,7 @@ int main(int argc , char **argv){
 				iRet = send_bus_pkg(logic_server_id , connect_server_id , &sspackage_recv);
 				if(iRet == 0){	/*发送成功*/
 #ifdef DEBUG
-					printf("connect server: send bus success!");
+//					printf("connect server: send bus success!");
 #endif
 				}
 				else
@@ -351,12 +356,12 @@ int main(int argc , char **argv){
  * @return: -1 没有数据
  * >0 返回读取的数据长度
  */
-static int read_socket(int isock_fd , CSPACKAGE *pstcspackage){
-	if(isock_fd < 0  || !pstcspackage){
+static int read_socket(int isock_fd , cspackage_t *cspackage){
+	if(isock_fd < 0  || !cspackage){
 		return -1;
 	}
 
-	return recv(isock_fd , pstcspackage , sizeof(CSPACKAGE) , 0);
+	return recv(isock_fd , cspackage , sizeof(cspackage_t) , 0);
 }
 
 /*
@@ -364,12 +369,12 @@ static int read_socket(int isock_fd , CSPACKAGE *pstcspackage){
  * @return: > 0发送的数据长度
  * -1:发送失败
  */
-static int write_socket(int isock_fd , CSPACKAGE *pstcspackage){
-	if(isock_fd < 0  || !pstcspackage){
+static int write_socket(int isock_fd , cspackage_t *cspackage){
+	if(isock_fd < 0  || !cspackage){
 		return -1;
 	}
 
-	return send(isock_fd , pstcspackage, sizeof(CSPACKAGE) , 0);
+	return send(isock_fd , cspackage, sizeof(cspackage_t) , 0);
 }
 
 /*
@@ -392,7 +397,7 @@ static int send_to_client(int client_fd){
 		}
 
 		iRet = write_socket(client_fd , &pstnode->cs_data);
-		if(iRet == -1 || iRet != sizeof(CSPACKAGE)){	/*如果发送失败或者发送数据小于一个包长，则退出待以后重新发送*/
+		if(iRet == -1 || iRet != sizeof(cspackage_t)){	/*如果发送失败或者发送数据小于一个包长，则退出待以后重新发送*/
 			write_log(LOG_ERR , "connect_server:send to client %d # write_socket failed!" , client_fd);
 			break;
 		}
@@ -479,7 +484,7 @@ static int close_client(int client_fd){
  * 一个管道最多读10个包然后换管道
  */
 static int try_handle_buses(void){
-	SSPACKAGE sspackage;
+	sspackage_t sspackage;
 
 	bus_interface *bus = NULL;
 	CSPACKAGE_NODE *pstnode = NULL;
@@ -507,11 +512,11 @@ static int try_handle_buses(void){
 
 		/*发包*/
 		isend_bytes = write_socket(sspackage.sshead.client_fd , &sspackage.cs_data);
-		if(isend_bytes != sizeof(CSPACKAGE)){		/*如果发送失败或者发送字节小于一个包长则将其放入发送队列中*/
+		if(isend_bytes != sizeof(cspackage_t)){		/*如果发送失败或者发送字节小于一个包长则将其放入发送队列中*/
 //			pstnode = (CSPACKAGE_NODE *)malloc(sizeof(CSPACKAGE));
-			pstnode = (CSPACKAGE_NODE *)xx_alloc_mem(poll , sizeof(CSPACKAGE));
+			pstnode = (CSPACKAGE_NODE *)xx_alloc_mem(poll , sizeof(cspackage_t));
 
-			memcpy(&pstnode->cs_data , &sspackage.cs_data , sizeof(CSPACKAGE));
+			memcpy(&pstnode->cs_data , &sspackage.cs_data , sizeof(cspackage_t));
 			pstnode->node_next = NULL;
 			client.client_connects[sspackage.sshead.client_fd].send_tail->node_next = pstnode;
 			client.client_connects[sspackage.sshead.client_fd].send_count++;

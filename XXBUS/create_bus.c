@@ -6,7 +6,9 @@
  */
 
 /*
- * 创建各个本地进程之间通信的BUS
+ * 创建服务进程需要的共享内存环境，包括：
+ * 1.创建各个本地进程之间通信的BUS
+ * 2.创建各种资源类型的共享内存
  */
 
 
@@ -26,39 +28,49 @@ int main(int argc , char **argv){
 	size_t size = 0;
 	key_t key;
 	bus_interface *pstbus_interface = NULL;
-	char *src;
+	char arg_segs[ARG_SEG_COUNT][ARG_CONTENT_LEN] = {0};	/*用于解析输入的argv[1] ID字符串*/
+	int world_id;
+	int line_id;
+	int icount;
+	int i;
 
 	proc_t connect_server_id;	/*链接进程*/
 	proc_t logic_server_id;			/*逻辑进程*/
 	proc_t log_server_id;			/*日志进程*/
 
+	online_players_t *online_players;
+
+
+
 	/*check*/
 	if(argc < 2){
-//		printf("error: argument is not enough!\n");
-		write_log(LOG_ERR , "create_bus:argc < 2 , please input more information like: ./create_bus line1\n");
+		write_log(LOG_ERR , "create_bus:argc < 2 , please input more information worldid.lineid.0.0 , like:1.1.0.0");
 		return -1;
 	}
 
-	do{
-		if(strcasecmp(argv[1] , "line1") == 0){	/*1线*/
-			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_CONNECT_SERVER;
-			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOGIC_SERVER;
-			log_server_id = GEN_WORLDID(1) | GEN_LINEID(1) | FLAG_SERV | GAME_LOG_SERVER;
-			break;
-		}
-		if(strcasecmp(argv[1] , "line2") == 0){	/*2线*/
-			connect_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_CONNECT_SERVER;
-			logic_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOGIC_SERVER;
-			log_server_id = GEN_WORLDID(1) | GEN_LINEID(2) | FLAG_SERV | GAME_LOG_SERVER;
-			break;
-		}
-
+	/*解析参数字符串*/
+	icount = strsplit(argv[1] , '.' , arg_segs , ARG_SEG_COUNT , ARG_CONTENT_LEN);
+	if(icount < 2){
 		write_log(LOG_ERR , "create_bus:illegal argument 1:%s , exit!" , argv[1]);
-//		printf("illegal argument 1:%s , exit!" , argv[1]);
 		return -1;
-	}while(0);
+	}
+	world_id = atoi(arg_segs[0]);	/*世界ID*/
+	line_id = atoi(arg_segs[1]);	/*线ID*/
+
+	if(world_id<=0 || world_id>MAX_WORLD_COUNT || line_id<=0 || line_id>MAX_LINE_COUNT){	/*ID不能小于0或超出最大*/
+		write_log(LOG_ERR , "create_bus:illegal argument1:%s , exit!" , argv[1]);
+		return -1;
+	}
+
+#ifdef DEBUG
+	printf("world_id:%d , line_id:%d\n" , world_id , line_id);
+#endif
 
 
+	/************创建各个服务进程之间的通信BUS***********************/
+	connect_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_CONNECT_SERVER;
+	logic_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_LOGIC_SERVER;
+	log_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_LOG_SERVER;
 
 	printf("create bus...\n");
 	/*创建connect_server与logic_server 的BUS*/
@@ -71,20 +83,20 @@ int main(int argc , char **argv){
 	key = connect_server_id | logic_server_id;
 
 	size = sizeof(bus_interface);
-	printf("real size is: %x\n" , size);
-	if(size % PAGE_SIZE != 0){	/*必须是页面的整数倍*/
-		size = (size / PAGE_SIZE + 1) * PAGE_SIZE;
-	}
+//	printf("real size is: %x\n" , size);
+//	if(size % PAGE_SIZE != 0){	/*必须是页面的整数倍*/
+//		size = (size / PAGE_SIZE + 1) * PAGE_SIZE;
+//	}
 
 	ishm_id = shmget(key , size , IPC_CREAT | IPC_EXCL | BUS_MODE_FLAG);
 	if(ishm_id < 0 ){
-		write_log(LOG_ERR , "create_bus: shmget bus between connect and logic failed!");
+		write_log(LOG_ERR , "create_bus: shmget bus %x between connect and logic failed!" , key);
 		return -1;
 	}
 
 	pstbus_interface = (bus_interface *)shmat(ishm_id , NULL , 0);	/*设置该管道INTEFACE*/
 	if(!pstbus_interface){
-		write_log(LOG_ERR , "create_bus:shmat bus between connect and logic failed!");
+		write_log(LOG_ERR , "create_bus:shmat bus %x between connect and logic failed!" , key);
 		return -1;
 	}
 
@@ -93,11 +105,37 @@ int main(int argc , char **argv){
 	pstbus_interface->udwproc_id_recv_ch2 = logic_server_id;		/*管道2用于LOGIC收包*/
 
 
-	write_log(LOG_INFO , "create_bus:create bus of connect and logic success...");
+	write_log(LOG_INFO , "create_bus:create bus %x of connect and logic success..." , key);
 #ifdef DEBUG
 	printf("pstbus_interface: %x vs %x\n" , pstbus_interface ->udwproc_id_recv_ch1 , pstbus_interface ->udwproc_id_recv_ch2);
 	printf("channel one: %x ~ %x\n" , pstbus_interface->channel_one.data , &pstbus_interface->channel_one.data[CHANNEL_MAX_PACKAGE]);
 	printf("channel two: %x ~ %x\n" , pstbus_interface->channel_two.data , &pstbus_interface->channel_two.data[CHANNEL_MAX_PACKAGE]);
 #endif
+
+	/************创建共享资源***********************/
+	/****创建在线玩家信息结构*****/
+	key = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_RES | GAME_ONLINE_PLAYERS;
+	size = sizeof(online_players_t);
+
+	ishm_id = shmget(key , size , IPC_CREAT | IPC_EXCL | BUS_MODE_FLAG);
+	if(ishm_id < 0 ){
+		write_log(LOG_ERR , "create_bus: shmget online_players %x failed!" , key);
+		return -1;
+	}
+
+	online_players = (online_players_t *)shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
+	if(!online_players){
+		write_log(LOG_ERR , "create_bus:shmat online_players %x failed!" , key);
+		return -1;
+	}
+
+	/*初始化结构体*/
+	online_players->global_id = key;	/*标识，用于验证*/
+	for(i=0; i<MAX_ONLINE_PLAYERS; i++){		/*不用全部memset为0,只需要全局ID赋值为0*/
+		online_players->info[i].global_id = 0;
+	}
+	write_log(LOG_INFO , "create_bus:create online_players %x success..." , online_players->global_id);
+
+
 	return 0;
 }

@@ -29,7 +29,7 @@
  * 同理CHANNEL B用于B进程接收则表示对于A是发送管道；
  */
 struct _bus_channel{
-	SSPACKAGE data[CHANNEL_MAX_PACKAGE];
+	sspackage_t data[CHANNEL_MAX_PACKAGE];
 	u8 package_num;	/*包的数量*/
 	u8 head;		/*队首地址，用于收包*/
 	u8 tail;			/*队尾地址，用于发包*/
@@ -82,7 +82,7 @@ extern int close_bus(proc_t proc1 , proc_t proc2);
  * -1：出现错误
  * -2: BUS满
  */
-extern int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
+extern int send_bus_pkg(proc_t recv_proc , proc_t send_proc , sspackage_t *package);
 
 /*
  * 通过BUS接收包
@@ -94,49 +94,30 @@ extern int send_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package
  * -1：出现错误
  * -2: BUS空
  */
-extern int get_bus_pkg(proc_t recv_proc , proc_t send_proc , SSPACKAGE *package);
-
-/*
- * 链接上BUS
- * @proc1: 利用BUS通信的一个进程标志
- * @proc2:利用BUS通信的另一个进程标志
- * @return:成功返回该BUS接口；失败返回NULL
- */
-//extern bus_interface *attach_bus(u8 proc1 , u8 proc2);
-
-/*
- * 脱离BUS
- * @bus: bus的接口
- * @return:成功返回0；失败返回-1
- */
-//extern int detach_bus(bus_interface *bus);
+extern int get_bus_pkg(proc_t recv_proc , proc_t send_proc , sspackage_t *package);
 
 
 /*
- * 通过BUS发送包
- * @param recv_proc:接收进程标志
- * @param send_proc: 发送进程标志
- * @bus: 使用的BUS
- * @package: 发送包缓冲区
+ * 链接共享资源地址
+ * @param res_type:资源类型
+ * @world_id:世界ID
+ * @line_id:线ID
  * @return:
- * 0:发送成功；
- * -1：出现错误
- * -2: BUS满
+ * 失败:NULL
+ * 成功:资源地址
  */
-//extern int send_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package);
-
+extern void *attach_shm_res(int res_type , int world_id , int line_id);
 
 /*
- * 通过BUS接收包
- * @param recv_proc:接收进程标志
- * @param send_proc: 发送进程标志
- * @bus: 使用的BUS
- * @package: 接收包缓冲区
+ * 剥离该进程具有的共享资源
+ * @param res_type:资源类型
+ * @world_id:世界ID
+ * @line_id:线ID
  * @return:
- * 0:接收成功；
- * -1：出现错误
- * -2: BUS空
+ * 失败:-1
+ * 成功:0
  */
-//extern int recv_bus(u8 recv_proc , u8 send_proc , bus_interface *bus , SSPACKAGE *package);
+extern int detach_shm_res(int res_type , int world_id , int line_id);
+
 
 #endif /* XX_BUS_H_ */

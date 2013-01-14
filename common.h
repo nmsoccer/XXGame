@@ -11,14 +11,14 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <time.h>
-#include "mytypes.h"
 #include <string.h>
 #include <errno.h>
 
+#include "mytypes.h"
+#include "package.h"
+#include "player_info.h"
+
 extern int errno;
-
-#define CS_DATA_LEN 512
-
 #define DEBUG
 
 /*=======================MACRO=========================================*/
@@ -31,14 +31,11 @@ extern int errno;
 #define PRINT(e)
 #endif
 
+/*内存页面大小*/
+#define PAGE_SIZE 1024
 
-#define PAGE_SIZE 1024	/*内存页面大小*/
-
-/*
- * proto type
- */
-#define XX_PROTO_VALIDATE	1	/*验证用户信息*/
-#define XX_PROTO_TEST 255		/*测试类型包*/
+/*进程能够支持最多同时接入用户的数目*/
+#define MAX_CONNECT_CLIENTS 1024
 
 
 /*
@@ -48,6 +45,12 @@ extern int errno;
 #define MODE_WRITE_FILE		S_IWUSR | S_IXUSR
 #define MODE_RDWR_FILE		(S_IRUSR | S_IWUSR | S_IXUSR)
 
+
+/*
+ * 参数字符串的分割
+ */
+#define ARG_SEG_COUNT	10	/*参数字符串最多段数*/
+#define ARG_CONTENT_LEN	8	/*参数字符串每段最大长度*/
 
 /*
  * 各个进程在游戏环境中的ID
@@ -60,33 +63,30 @@ extern int errno;
  * 如果FLAG被设置为 FLAG_SERV 则0～22位为服务进程  每条线共支持23个服务进程
  * 如果FLAG被设置为FLAG_RES 则0~22位为资源ID 一共支持2exp(23)种资源类型
  */
-#define MAX_WORLD_COUNT 16	/*一共支持16个世界*/
+#define MAX_WORLD_COUNT 15	/*一共支持15个世界 1~15*/
 #define GAME_WORLD_MASK 0xF0000000	/*世界掩码*/
 #define GEN_WORLDID(n) (n << 28 & GAME_WORLD_MASK)	/*生成世界编号*/
 
-#define MAX_LINE_COUNT	16	/*每个世界最多16条线*/
+#define MAX_LINE_COUNT	15/*每个世界最多15条线 1~15*/
 #define GAME_LINE_MASK 0x0F000000	/*获得线号的掩码*/
 #define GEN_LINEID(n) (n << 24 & GAME_LINE_MASK)	/*生成线编号*/
 
-//#define GAME_LINE_1	0x01000000		/*00000001 ...b*/
-//#define GAME_LINE_2	0x02000000	/*00000010 ...b*/
-//#define GAME_LINE_3	0x04000000	/*00000100 ...b*/
-//#define GAME_LINE_4	0x07000000	/*00001000 ...b*/
-//#define GAME_LINE_5	0x10000000		/*00010000 ...b*/
-//#define GAME_LINE_6	0x20000000	/*00100001 ...b*/
-//#define GAME_LINE_7	0x40000000	/*01000001 ...b*/
-//#define GAME_LINE_8	0x70000000	/*10000001 ...b*/
 
 #define FLAG_SERV	0x00000000 /*服务标志:低0~22位为服务进程*/
 #define FLAG_RES		0x00800000 /*资源标志:低0~22位为资源ID*/
 #define GAME_FLAG_MASK 0x00800000	/*杂项掩码*/
 //#define GEN_FLAG(n) (n << 23 & GAME_FLAG_MASK)
 
+//进程标识
 #define MAX_SERV_COUNT	23	/*每条线支持23个服务进程*/
 #define GAME_CONNECT_SERVER	0x00000001		/*链接客户端服务进程*/
 #define GAME_LOGIC_SERVER			0x00000002	/*处理游戏主逻辑的逻辑进程*/
 #define GAME_LOG_SERVER			0x00000004	/*处理日志的日志服务器*/
 #define GAME_SERV_MASK 0x007FFFFF	/*获得进程号的掩码*/
+
+//资源标识
+#define GAME_RT_ENV	0x00000001		/*runtime enviroment用于各个进程之间共享的运行时环境*/
+#define GAME_ONLINE_PLAYERS 0x00000010	/*在线玩家信息*/
 
 //#define GAME_SHARE_SPACE
 
@@ -127,46 +127,19 @@ extern int errno;
 
 /*=======================DATA STRUCT=========================================*/
 /*
- * PLAYER INFO
+ * 在线玩家信息
  */
-#define PLAYER_NAME_LEN	64	/*角色名*/
-#define PLAYER_PASSWD_LEN	32/*密码长度*/
+#define MAX_ONLINE_PLAYERS MAX_CONNECT_CLIENTS	/*最多支持在线人数*/
 
-struct stplayer{
-	char szname[PLAYER_NAME_LEN];
-	char szpasswd[PLAYER_PASSWD_LEN];
+struct _online_players{
+	u32 global_id;	/*资源全局ID*/
+	player_info_t info[MAX_ONLINE_PLAYERS];	/*在线玩家的信息*/
 };
+typedef struct _online_players online_players_t;
 
 
-/*
- * 客户与服务端交互数据包
- */
-typedef struct{
-	struct _cshead{		/*CS包头*/
-		/*协议类型*/
-		u16 proto_type;
-	}cshead;
-
-	union _data{			/*CS包内容*/
-		struct stplayer stplayer_info;
-		char acdata[CS_DATA_LEN];
-	} data;
-}CSPACKAGE;
 
 
-/*
- * 服务器进程之间交互的数据包
- */
-#define SS_NORMAL	1	/*普通的服务器包类型*/
-#define SS_BROADCAST 2	/*广播包*/
-
-typedef struct{
-	struct _sshead{
-		u8  package_type;		/*服务器包类型*/
-		int client_fd;	/*与客户端连接的socket fd*/
-	}sshead;
-	CSPACKAGE cs_data;	/*读入或者发送的客户端数据包*/
-}SSPACKAGE;
 
 
 #endif /* COMMON_H_ */
