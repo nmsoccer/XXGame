@@ -38,8 +38,8 @@ int main(int argc , char **argv){
 	proc_t logic_server_id;			/*逻辑进程*/
 	proc_t log_server_id;			/*日志进程*/
 
-	online_players_t *online_players;
-
+	runtime_env_t *pruntime_env = NULL;
+	online_players_t *ponline_players = NULL;
 
 
 	/*check*/
@@ -113,6 +113,31 @@ int main(int argc , char **argv){
 #endif
 
 	/************创建共享资源***********************/
+	/****创建游戏运行时环境*****/
+	key = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_RES | GAME_RT_ENV;
+	size = sizeof(runtime_env_t);
+
+	ishm_id = shmget(key , size , IPC_CREAT | IPC_EXCL | BUS_MODE_FLAG);
+	if(ishm_id < 0 ){
+		write_log(LOG_ERR , "create_bus: shmget runtime_env %x failed!" , key);
+		return -1;
+	}
+
+	pruntime_env = (runtime_env_t *)shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
+	if(!pruntime_env){
+		write_log(LOG_ERR , "create_bus:shmat runtime_env %x failed!" , key);
+		return -1;
+	}
+
+	/*初始化结构体*/
+	pruntime_env->basic.global_id = key;	/*标识，用于验证*/
+	pruntime_env->rdwr_lock.read_lock = READ_UNLOCK;
+	pruntime_env->rdwr_lock.write_lock = WRITE_UNLOCK;
+	pruntime_env->rdwr_lock.rd_lock_count = 0;
+//	pruntime_env->basic.world_id = world_id;
+//	pruntime_env->basic.line_id = line_id;
+	write_log(LOG_INFO , "create_bus:create runtime_env %x success..." , pruntime_env->basic.global_id);
+
 	/****创建在线玩家信息结构*****/
 	key = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_RES | GAME_ONLINE_PLAYERS;
 	size = sizeof(online_players_t);
@@ -123,18 +148,18 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
-	online_players = (online_players_t *)shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
-	if(!online_players){
+	ponline_players = (online_players_t *)shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
+	if(!ponline_players){
 		write_log(LOG_ERR , "create_bus:shmat online_players %x failed!" , key);
 		return -1;
 	}
 
 	/*初始化结构体*/
-	online_players->global_id = key;	/*标识，用于验证*/
+	ponline_players->global_id = key;	/*标识，用于验证*/
 	for(i=0; i<MAX_ONLINE_PLAYERS; i++){		/*不用全部memset为0,只需要全局ID赋值为0*/
-		online_players->info[i].global_id = 0;
+		ponline_players->info[i].global_id = 0;
 	}
-	write_log(LOG_INFO , "create_bus:create online_players %x success..." , online_players->global_id);
+	write_log(LOG_INFO , "create_bus:create online_players %x success..." , ponline_players->global_id);
 
 
 	return 0;

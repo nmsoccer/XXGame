@@ -19,6 +19,8 @@
 #include "tool.h"
 #include "mytypes.h"
 #include "mempoll.h"
+#include "cs_package.h"
+#include "ss_package.h"
 
 #include "XXBUS/xx_bus.h"
 
@@ -67,22 +69,21 @@ typedef struct{
 /*
  * 每个socket fd 对应一个成员。成员在数组的位置就是其fd值
  */
-//static client_connect client_connects[MAX_CONNECT_CLIENTS];
 static CLIENT client;
-/*标识信息*/
+
+/***标识信息***/
 static int world_id;		/*世界ID*/
 static int line_id;		/*线ID*/
 static proc_t connect_server_id;	/*链接服务进程的全局ID*/
 static proc_t logic_server_id;		/*逻辑服务器进程的全局ID*/
 static proc_t log_server_id;			/*LOG服务器进程的全局ID*/
-//static bus_interface *bus_to_logic = NULL;
 
-/*connect_server的ID*/
-//static u8 connect_server_id;
-/*logic_server的ID*/
-//static u8 logic_server_id;
-/*内存池*/
+/***内存池***/
 static xxmem_poll *poll;
+
+/***游戏运行时环境***/
+static runtime_env_t *pruntime_env;
+
 //////////////////////////////////////////////FUNCTION/////////////////////////////////////
 /*
  * 读取数据
@@ -137,6 +138,7 @@ int main(int argc , char **argv){
 	int handle_fd;	/*循环中处理的fd*/
 	char arg_segs[ARG_SEG_COUNT][ARG_CONTENT_LEN];	/*参数内容*/
 	int icount;
+	int index = 0;
 
 	struct sockaddr_in stserv_addr;
 	struct sockaddr_in stcli_addr;
@@ -161,18 +163,20 @@ int main(int argc , char **argv){
 
 	u32 ticks = 0;	/*时间滴答*/
 
-	/*检测参数*/
+	/***检测参数*/
 	if(argc < 2){
 		write_log(LOG_ERR , "connect_server:argc < 2 , please input more information worldid.lineid.xxxx , like:1.1.xxxx");
 		return -1;
 	}
 
-	/*解析参数字符串*/
+
+	/***解析参数字符串*/
 	icount = strsplit(argv[1] , '.' , arg_segs , ARG_SEG_COUNT , ARG_CONTENT_LEN);
 	if(icount < 2){
 		write_log(LOG_ERR , "connect_server:illegal argument 1:%s , exit!" , argv[1]);
 		return -1;
 	}
+
 	world_id = atoi(arg_segs[0]);	/*世界ID*/
 	line_id = atoi(arg_segs[1]);	/*线ID*/
 
@@ -188,7 +192,7 @@ int main(int argc , char **argv){
 	logic_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_LOGIC_SERVER;
 	log_server_id = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_SERV | GAME_LOG_SERVER;
 
-	/*Create sockfd*/
+	/***Create sockfd*/
 	iserv_fd = socket(PF_INET , SOCK_STREAM , 0 );
 	if(iserv_fd < 0){
 		write_log(LOG_ERR , "connect_server:create connect server socket failed!");
@@ -196,7 +200,7 @@ int main(int argc , char **argv){
 	}
 	iaddr_len = sizeof(struct sockaddr_in);
 
-	/*Bind*/
+	/***Bind*/
 	memset(&stserv_addr , 0 , sizeof(stserv_addr));
 	stserv_addr.sin_family = AF_INET;
 	stserv_addr.sin_addr.s_addr = INADDR_ANY;
@@ -207,7 +211,7 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
-	/*Create epoll fd and set it*/
+	/***Create epoll fd and set it*/
 	iepoll_fd = epoll_create(MAX_CONNECT_CLIENTS + 1);	/*包括iserv_fd*/
 	if(iepoll_fd < 0){
 		write_log(LOG_ERR , "connect_server:epoll create failed!");
@@ -222,18 +226,18 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
-	/*Listen*/
+	/***Listen*/
 	listen(iserv_fd , MAX_LISTEN_CLIENTS);
 
-	/*初始化客户端链接*/
+	/***初始化客户端链接*/
 	memset(&client , 0 , sizeof(CLIENT));
 
-	/*处理信号*/
+	/***处理信号*/
 	memset(&stsig_act , 0 , sizeof(stsig_act));
 	stsig_act.sa_handler = handle_signal;
 	sigaction(SIGINT , &stsig_act , NULL);
 
-	/*创建内存池*/
+	/***创建内存池*/
 	poll = create_mem_poll();
 	if(!poll){
 		write_log(LOG_ERR , "connect_server:create mem poll failed!");
@@ -242,14 +246,29 @@ int main(int argc , char **argv){
 		write_log(LOG_INFO , "connect_server:create mem poll success!");
 	}
 
-	/*链接BUS*/
+	/***链接BUS*/
 	iRet = open_bus(connect_server_id , logic_server_id);
 	if(iRet < 0){
 		write_log(LOG_ERR , "connect_server:open bus connect <-> logic failed!");
 		return -1;
 	}
 
-	/*start success*/
+	/***获得游戏运行时环境*/
+	pruntime_env = (runtime_env_t *)attach_shm_res(GAME_RT_ENV , world_id , line_id);
+	if(!pruntime_env){
+		write_log(LOG_ERR , "connect_server:attach runtime env failed!");
+		return -1;
+	}else{
+		write_log(LOG_INFO , "connect_server:attach runtime env %x success!" , pruntime_env->basic.global_id);
+	}
+	/*设置相关信息*/
+	index = index_last_1bit(GAME_CONNECT_SERVER);
+//	printf("index:%d\n" , index);
+	pruntime_env->basic.proc_info[index].global_id = connect_server_id;
+	pruntime_env->basic.proc_info[index].pid = getpid();
+//	printf("proc_t:%x vs pid:%d\n" , pruntime_env->basic.proc_info[index].global_id , pruntime_env->basic.proc_info[index].pid);
+
+	/***start success*/
 	write_log(LOG_INFO , "start connect_server %s success!" , argv[1]);
 
 	/*主逻辑*/
@@ -300,8 +319,9 @@ int main(int argc , char **argv){
 				handle_fd = astepoll_events[i].data.fd;
 				/*read client*/
 				memset(&sspackage_recv , 0 , sizeof(sspackage_t));
+				sspackage_recv.sshead.package_type = SS_FROM_CLIENT;
 				sspackage_recv.sshead.client_fd = handle_fd;
-				iRet = read_socket(handle_fd , &sspackage_recv.cs_data);
+				iRet = read_socket(handle_fd , &sspackage_recv.data.cs_data);
 
 				if(iRet == sizeof(cspackage_t)){
 #ifdef DEBUG
@@ -314,6 +334,17 @@ int main(int argc , char **argv){
 				}
 				else{	/*没有数据*/
 					write_log(LOG_INFO , "connect server: nothing to read!");
+				}
+
+				/*校验包序列号*/
+//				printf("seq:%d , validate: %d xx: %d\n" , sspackage_recv.data.cs_data.cshead.seq , sspackage_recv.data.cs_data.cshead.validate_seq , VALIDATE_SEQ(sspackage_recv.data.cs_data.cshead.seq , sspackage_recv.data.cs_data.cshead.major_version ,
+//						sspackage_recv.data.cs_data.cshead.minor_version , sspackage_recv.data.cs_data.cshead.proto_type));
+				if(VALIDATE_SEQ(sspackage_recv.data.cs_data.cshead.seq , sspackage_recv.data.cs_data.cshead.major_version ,
+						sspackage_recv.data.cs_data.cshead.minor_version , sspackage_recv.data.cs_data.cshead.proto_type) != sspackage_recv.data.cs_data.cshead.validate_seq){
+					/*校验失败，则不返回也不发送到逻辑进程*/
+					write_log(LOG_INFO , "connect_server:recv client %d, no validate seq package: seq:%d vs vali_seq:%d" , handle_fd ,
+							sspackage_recv.data.cs_data.cshead.seq , sspackage_recv.data.cs_data.cshead.validate_seq);
+					continue;
 				}
 
 				/*将读取到的包通过BUS发送给logic*/
@@ -396,6 +427,7 @@ static int send_to_client(int client_fd){
 			break;
 		}
 
+		/*发包*/
 		iRet = write_socket(client_fd , &pstnode->cs_data);
 		if(iRet == -1 || iRet != sizeof(cspackage_t)){	/*如果发送失败或者发送数据小于一个包长，则退出待以后重新发送*/
 			write_log(LOG_ERR , "connect_server:send to client %d # write_socket failed!" , client_fd);
@@ -440,7 +472,6 @@ static int close_client(int client_fd){
 
 		pstnodetmp = pstnode;
 		pstnode = pstnode->node_next;
-//		free(pstnodetmp);
 		xx_free_mem(poll , pstnodetmp , sizeof(CSPACKAGE_NODE));
 	}
 
@@ -453,7 +484,6 @@ static int close_client(int client_fd){
 
 		pstnodetmp = pstnode;
 		pstnode = pstnode->node_next;
-//		free(pstnodetmp);
 		xx_free_mem(poll , pstnodetmp , sizeof(CSPACKAGE_NODE));
 	}
 
@@ -511,12 +541,11 @@ static int try_handle_buses(void){
 		}
 
 		/*发包*/
-		isend_bytes = write_socket(sspackage.sshead.client_fd , &sspackage.cs_data);
+		isend_bytes = write_socket(sspackage.sshead.client_fd , &sspackage.data.cs_data);
 		if(isend_bytes != sizeof(cspackage_t)){		/*如果发送失败或者发送字节小于一个包长则将其放入发送队列中*/
-//			pstnode = (CSPACKAGE_NODE *)malloc(sizeof(CSPACKAGE));
 			pstnode = (CSPACKAGE_NODE *)xx_alloc_mem(poll , sizeof(cspackage_t));
 
-			memcpy(&pstnode->cs_data , &sspackage.cs_data , sizeof(cspackage_t));
+			memcpy(&pstnode->cs_data , &sspackage.data.cs_data , sizeof(cspackage_t));
 			pstnode->node_next = NULL;
 			client.client_connects[sspackage.sshead.client_fd].send_tail->node_next = pstnode;
 			client.client_connects[sspackage.sshead.client_fd].send_count++;
@@ -564,6 +593,12 @@ static void handle_signal(int sig_no){
 				write_log(LOG_ERR , "connect server: delete_mem_poll failed!");
 			}
 			write_log(LOG_NOTIFY , "connect server: delete_mem_poll success!");
+			/*脱离游戏运行时环境*/
+			iret = detach_shm_res(GAME_RT_ENV , world_id , line_id);
+			if(iret < 0){
+				write_log(LOG_ERR , "connect server: detach runtime env connect failed!");
+			}
+			write_log(LOG_NOTIFY , "connect server: detach runtime env success!");
 			exit(0);
 		break;
 

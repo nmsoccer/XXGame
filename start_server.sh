@@ -7,10 +7,10 @@ echo "enter"  $PWD "ready to start log server..."
 cd ..
 
 #create bus
-cd XXBUS
-echo "enter" $PWD "ready to create bus..."
-./create_bus 1.1.x.x
-cd ..
+#cd XXBUS
+#echo "enter" $PWD "ready to create bus..."
+#./create_bus 1.1.x.x
+#cd ..
 
 #start connect_server
 cd XXCONNECT

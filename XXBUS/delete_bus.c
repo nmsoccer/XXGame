@@ -27,7 +27,8 @@ int main(int argc , char **argv){
 	key_t key;
 	int iRet = -1;
 	bus_interface *pstbus_interface;
-	online_players_t *online_players;
+	online_players_t *ponline_players;
+	runtime_env_t *pruntime_env;
 	char arg_segs[ARG_SEG_COUNT][ARG_CONTENT_LEN] = {0};
 	int world_id;
 	int line_id;
@@ -94,6 +95,29 @@ int main(int argc , char **argv){
 
 
 	/************删除共享资源***********************/
+	/****删除游戏运行时环境*****/
+	key = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_RES | GAME_RT_ENV;
+
+	ishm_id = shmget(key , 0 , 0);
+	if(ishm_id < 0 ){
+		write_log(LOG_ERR , "delete_bus: shmget runtime_env failed!");
+		return -1;
+	}
+
+	pruntime_env = (runtime_env_t *)shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
+	if(!pruntime_env){
+		write_log(LOG_ERR , "delete_bus:shmat runtime_env failed!");
+		return -1;
+	}
+
+	/*删除结构体*/
+	iRet = shmctl(ishm_id , IPC_RMID , NULL);
+	if(iRet < 0){
+		write_log(LOG_ERR , "delete_bus: remove runtime_env %x failed!" , key);
+		return -1;
+	}
+	write_log(LOG_INFO , "delete_bus:remove online_players %x success!\n" , key);
+
 	/****删除在线玩家信息结构*****/
 	key = GEN_WORLDID(world_id) | GEN_LINEID(line_id) | FLAG_RES | GAME_ONLINE_PLAYERS;
 
@@ -103,8 +127,8 @@ int main(int argc , char **argv){
 		return -1;
 	}
 
-	online_players = (online_players_t *)shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
-	if(!online_players){
+	ponline_players = (online_players_t *)shmat(ishm_id , NULL , 0);	/*获得该数据结构*/
+	if(!ponline_players){
 		write_log(LOG_ERR , "delete_bus:shmat online_players failed!");
 		return -1;
 	}
@@ -112,10 +136,10 @@ int main(int argc , char **argv){
 	/*删除结构体*/
 	iRet = shmctl(ishm_id , IPC_RMID , NULL);
 	if(iRet < 0){
-		write_log(LOG_ERR , "delete_bus: remove online_players %x failed!" , online_players->global_id);
+		write_log(LOG_ERR , "delete_bus: remove online_players %x failed!" , key);
 		return -1;
 	}
-	write_log(LOG_INFO , "delete_bus:remove online_players %x success!\n" , online_players->global_id);
+	write_log(LOG_INFO , "delete_bus:remove online_players %x success!\n" , key);
 
 
 	return 0;

@@ -247,7 +247,7 @@ void *attach_shm_res(int res_type , int world_id , int line_id){
 		return NULL;
 	}
 
-	write_log(LOG_INFO , "attach_shm_res: attach shm res %x success!!" , key);
+//	write_log(LOG_INFO , "attach_shm_res: attach shm res %x success!!" , key);
 	return addr;
 }
 
@@ -292,7 +292,7 @@ int detach_shm_res(int res_type , int world_id , int line_id){
 		return -1;
 	}
 
-	write_log(LOG_INFO , "detach_shm_res: detach shm res %x success!!" , key);
+//	write_log(LOG_INFO , "detach_shm_res: detach shm res %x success!!" , key);
 	return iret;
 }
 

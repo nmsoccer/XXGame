@@ -28,8 +28,11 @@
 static int validate_player(int connfd);
 static int print_menu(void);
 static int handle_move(int connfd);
-void handle(int connfd , char *str);
+static void handle(int connfd , char *str);
+static int send_package(int connfd , cspackage_t *send_cspackage);
+static int read_package(int connfd , cspackage_t *read_cspackage);
 
+static unsigned int seq = 0;	/*包序列号*/
 
 
 
@@ -51,6 +54,9 @@ int main(int argc, char **argv)
         return -1;
     }
 
+//	printf("it is:~~%d\n" , index_last_1bit(0));
+ //   return 0;
+
     connfd = socket(AF_INET, SOCK_STREAM, 0);
 
     bzero(&servaddr, sizeof(servaddr));
@@ -62,8 +68,12 @@ int main(int argc, char **argv)
         perror("connect error");
         return -1;
     }
-    printf("welcome to echoclient\n");
+    printf("welcome to xxgame!\n");
 
+    /*设置成非阻塞*/
+    set_nonblock(connfd);
+
+    /*主处理流程*/
     handle(connfd , argv[1]);     /* do it all */
 
     close(connfd);
@@ -91,15 +101,6 @@ void handle(int sockfd , char *str)
     }
 
 
-
-
-
-
-
-
-
-
-
 /*
     for (;;) {
     	memset(&stcspackage , 0 , sizeof(CSPACKAGE));
@@ -124,15 +125,75 @@ void handle(int sockfd , char *str)
 }
 
 
+static int send_package(int connfd , cspackage_t *send_cspackage){
+	int icount;
+	int iticks = 0;
+
+	while(1){
+		if(iticks >= 3){	/*大于三次 超时*/
+			printf("send package timeout...\n");
+			return -1;
+		}
+
+		icount = write(connfd , send_cspackage , sizeof(cspackage_t));
+		printf("send %d bytes~\n" , icount);
+		if(icount == sizeof(cspackage_t)){
+			break;
+		}
+		if(icount == -1){	/*发送缓冲区满*/
+			sleep(1);
+			iticks++;
+			continue;
+		}
+		/*发送了一部分*/
+		return -1;
+	}
+
+	return 0;
+}
+static int read_package(int connfd , cspackage_t *read_cspackage){
+	int icount;
+	int iticks = 0;
+
+	while(1){
+		if(iticks >= 3){	/*大于三次 超时*/
+			printf("read package timeout...\n");
+			return -1;
+		}
+
+		icount = read(connfd , read_cspackage , sizeof(cspackage_t));
+		printf("read %d bytes~\n" , icount);
+		if(icount == sizeof(cspackage_t)){
+			break;
+		}
+		if(icount == -1){	/*接收缓冲区空*/
+			sleep(1);
+			iticks++;
+			continue;
+		}
+		/*接收了一部分*/
+		return -1;
+	}
+
+	return 0;
+}
+
+
 static int validate_player(int connfd){
 	cspackage_t cspackage;
-	validate_info_t *info;
-	int i = 0;
+	req_validate_info_t *info;
+	int icount;
+	int iret;
 
-	info = &cspackage.data.validate_player;
+	info = &cspackage.data.req_validate_player;
 	while(1){
 		cspackage.cshead.proto_type = CS_PROTO_VALIDATE_PLAYER;
-		memset(info , 0 , sizeof(validate_info_t));
+		cspackage.cshead.major_version = MAJOR_VERSION;
+		cspackage.cshead.minor_version = MINOR_VERSION;
+		cspackage.cshead.seq = seq++;
+		cspackage.cshead.validate_seq = VALIDATE_SEQ(cspackage.cshead.seq , cspackage.cshead.major_version ,
+				cspackage.cshead.minor_version , cspackage.cshead.proto_type);
+		memset(info , 0 , sizeof(req_validate_info_t));
 
 		printf("WELCOME TO XX GAME WORLD!\n");
 		printf(">>>>Please input your name soldier: ");
@@ -145,16 +206,35 @@ static int validate_player(int connfd){
 
 		/*send*/
 		printf("your name is:%s , passwd is:%s\n" , info->player_name , info->player_passwd);
-		write(connfd, &cspackage , sizeof(cspackage_t));
+		iret = send_package(connfd , &cspackage);
+		if(iret == -1){	/*发送失败*/
+			continue;
+		}
 
 		/*read*/
     	memset(&cspackage , 0 , sizeof(cspackage_t));
-        read(connfd, &cspackage , sizeof(cspackage_t));
+		iret = read_package(connfd , &cspackage);
+		if(iret == -1){	/*接收失败*/
+			continue;
+		}
 
         /*check*/
-        if(cspackage.data.validate_player.is_validate == IS_VALIDATE){	/*验证通过*/
+        if(cspackage.data.reply_validate_player.is_validate == IS_VALIDATE){	/*验证通过*/
         	break;
+        }else{
+            switch(cspackage.data.reply_validate_player.is_validate){
+            	case NO_VALIDATE_NOUSR:
+            		printf("no such user!\n");
+            		break;
+            	case NO_VALIDATE_ERRPASS:
+            		printf("error passwd!\n");
+            		break;
+            	case NO_VALIDATE_ERRVERSION:
+            		printf("error version!\n");
+            		break;
+              }
         }
+
 
 	}	/*end while*/
 

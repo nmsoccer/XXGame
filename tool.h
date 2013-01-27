@@ -12,8 +12,6 @@
 #include "common.h"
 
 ///////////////////////////////MACRO DEFINE///////////////////////////////
-#define SPIN_LOCKED	1	/*自旋锁上锁*/
-#define SPIN_UN_LOCKED	0	/*解锁*/
 
 
 #define DIR_PATH_LEN	1024	/*创建目录路径长度*/
@@ -92,11 +90,68 @@ extern int set_sock_buff_size(int sock_fd , int send_size , int recv_size);
  *	如果锁变量没有上锁则由调用者为其上锁；
  *	如果锁变量已经上锁那么自旋直到解锁为止
  */
-extern int get_spin_lock(spin_lock_t *lock);
+extern int set_spin_lock(spin_lock_t *lock);
 
 /*
  * 丢弃自己使用的自旋锁即为其解锁
  */
 extern int drop_spin_lock(spin_lock_t *lock);
+
+/*
+ * 加上读锁
+ * 如果写锁已经加上则加读锁失败
+ * 如果读锁已经加上可以加读锁
+ *
+ * @param plock:读写锁指针
+ * @param seconds: 加锁失败的处理情况：>0 强制加锁持续秒数; 0 直接返回；<0 尝试持续加锁直到上锁为止
+ * @return:
+ * S_LOCKED:加锁成功
+ * E_LOCKED:已经有写锁
+ * E_ERROR:错误
+ */
+extern int set_read_lock(rdwr_lock_t *plock , int seconds);
+
+/*
+ *解读锁
+ *如果读锁已经上锁，则减少读锁数目；如果读锁数目为0则将锁设置为完全解开；
+ *如果写锁上锁则失败（这种情况一般不会出现。出现则是因为逻辑错误）
+ *@return:
+ *S_UNLOCK:解锁成功
+ * E_LOCKED:已经有写锁
+ * E_ERROR:错误
+ */
+extern int drop_read_lock(rdwr_lock_t *plock);
+
+/*
+ * 加上写锁
+ * 如果写锁已经加上则加写锁失败
+ * 如果读锁已经加上则加写锁失败
+ *
+ * @param plock:读写锁指针
+ * @param seconds: 加锁失败的处理情况：>0 强制加锁持续秒数; 0 直接返回；<0 尝试持续加锁直到上锁为止
+ * @return:
+ * S_LOCKED:加锁成功
+ * E_LOCKED:已经有锁
+ * E_ERROR:错误
+ */
+extern int set_write_lock(rdwr_lock_t *plock , int seconds);
+
+/*
+ *解写锁
+ *如果写锁已经上锁，则将锁设置为完全解开；
+ *如果读锁上锁则失败（这种情况一般不会出现。出现则是因为逻辑错误）
+ *@return:
+ *S_UNLOCK:解锁成功
+ * E_LOCKED:已经有写锁
+ * E_ERROR:错误
+ */
+extern int drop_write_lock(rdwr_lock_t *plock);
+
+/*=======================INLINE FUNCTIONS=========================================*/
+/*
+ * 获得最右0的个数也就是最右方bit1的偏移
+ * 比如011000 返回3
+ */
+inline int index_last_1bit(int _il1b_number);
 
 #endif /* TOOL_H_ */

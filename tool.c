@@ -16,6 +16,8 @@
 #include <stdarg.h>
 #include "tool.h"
 
+static FILE *log_file = NULL;
+
 /*
  * 出错记录
  */
@@ -43,7 +45,7 @@ int write_log(u32 type , ...){
 	int index = 0;
 	time_t tp;
 	struct tm *tm;
-	FILE *log_file;
+//	FILE *log_file;
 	int ret;
 
 	/*记录时间*/
@@ -53,7 +55,8 @@ int write_log(u32 type , ...){
 	/*整合日志信息*/
 	va_start(arg_list , type);	/*使arg_list指向type之后的第一个参数地址*/
 	fmt = va_arg(arg_list , char *);	/*fmt为type之后的参数：格式化字符串*/
-	if(!fmt){
+	if(!fmt){//	int world_id;	/*世界ID*/
+		//	int line_id;		/*线ID*/
 		return -1;
 	}
 
@@ -93,23 +96,23 @@ int write_log(u32 type , ...){
 
 	va_end(arg_list);
 	/*写入日志文件。位于当前文件夹的LOG/年/月/日.log  日志存储文件目录表已经由log_server创建好*/
-	tp = time(0);
-	tm = localtime(&tp);
-	snprintf(file_path , sizeof(file_path) , "./LOG/%d/%d/%d.log" , tm->tm_year + 1900 , tm->tm_mon + 1 , tm->tm_mday);
-
-	log_file = fopen(file_path , "a+");
+//	printf("log file:%x\n" , log_file);
 	if(log_file == NULL){
-		printf("!!write log error!! open %s failed\n" , file_path);
-		return -1;
+		tp = time(0);
+		tm = localtime(&tp);
+		snprintf(file_path , sizeof(file_path) , "./LOG/%d/%d/%d.log" , tm->tm_year + 1900 , tm->tm_mon + 1 , tm->tm_mday);
+
+		log_file = fopen(file_path , "a+");
+		if(log_file == NULL){
+			printf("!!write log error!! open %s failed\n" , file_path);
+			return -1;
+		}
+//		printf("create log_file!\n");
 	}
 
 	buff[strlen(buff)] = '\n';
 	fputs(buff , log_file);
-	fclose(log_file);
-
-//	fd = open();
-
-
+//	fclose(log_file);	/*等进程关闭时再关闭文件句柄*/
 	return 0;
 }
 
@@ -314,10 +317,10 @@ int set_sock_buff_size(int sock_fd , int send_size , int recv_size){
  *	如果锁变量没有上锁则由调用者为其上锁；
  *	如果锁变量已经上锁那么自旋直到解锁为止
  */
-int get_spin_lock(spin_lock_t *lock){
-	while(*lock !=  SPIN_UN_LOCKED);
+int set_spin_lock(spin_lock_t *lock){
+	while(*lock !=  SPIN_UN_LOCK);
 
-	*lock = SPIN_LOCKED;
+	*lock = SPIN_LOCK;
 	return 0;
 }
 
@@ -325,6 +328,128 @@ int get_spin_lock(spin_lock_t *lock){
  * 丢弃自己使用的自旋锁即为其解锁
  */
 int drop_spin_lock(spin_lock_t *lock){
-	*lock = SPIN_UN_LOCKED;
+	*lock = SPIN_UN_LOCK;
 	return 0;
+}
+
+/*
+ * 加上读锁
+ * 如果写锁已经加上则加读锁失败
+ * 如果读锁已经加上可以加读锁
+ *
+ * @param plock:读写锁指针
+ * @param seconds: 加锁失败的处理情况：>0 强制加锁持续秒数; 0 直接返回；<0 尝试持续加锁直到上锁为止
+ * @return:
+ * S_LOCKED:加锁成功
+ * E_LOCKED:已经有写锁
+ * E_ERROR:错误
+ */
+int set_read_lock(rdwr_lock_t *plock , int seconds){
+	int circles = 0;
+
+	/*check*/
+	if(!plock){
+		return E_LOCK;
+	}
+
+	/*handle*/
+	/*如果写锁未上，则直接加读锁*/
+	if(plock->write_lock == WRITE_UNLOCK){
+		plock->rd_lock_count++;	/*加读锁数量*/
+		plock->read_lock = READ_LOCK;
+		return S_LOCKED;
+	}
+
+	/*写锁已经加上，则等待解锁*/
+	if(seconds == 0){	/*直接返回*/
+		return E_WRLOCKED;
+	}
+
+	if(seconds > 0){	/*等待seconds*/
+		while(1){
+			if(circles >= seconds){
+				return E_WRLOCKED;
+			}
+
+			if(plock->write_lock == WRITE_UNLOCK){	/*如果写锁解开*/
+				plock->read_lock = READ_LOCK;
+				plock->rd_lock_count++;
+				return S_LOCKED;
+			}
+
+			sleep(1);
+			circles++;
+		}
+	}
+
+	/*等待直到解锁*/
+	while(1){
+		if(plock->write_lock == WRITE_UNLOCK){	/*如果写锁解开*/
+			plock->read_lock = READ_LOCK;
+			plock->rd_lock_count++;
+			return S_LOCKED;
+		}
+	}
+
+	return E_LOCK;
+}
+
+/*
+ *解读锁
+ *如果读锁已经上锁，则减少读锁数目；如果读锁数目为0则将锁设置为完全解开；
+ *如果写锁上锁则失败（这种情况一般不会出现。出现则是因为逻辑错误）
+ *@return:
+ *S_UNLOCK:解锁成功
+ * E_LOCKED:已经有写锁
+ * E_ERROR:错误
+ */
+int drop_read_lock(rdwr_lock_t *plock){
+	return 0;
+}
+
+/*
+ * 加上写锁
+ * 如果写锁已经加上则加写锁失败
+ * 如果读锁已经加上则加写锁失败
+ *
+ * @param plock:读写锁指针
+ * @param seconds: 加锁失败的处理情况：>0 强制加锁持续秒数; 0 直接返回；<0 尝试持续加锁直到上锁为止
+ * @return:
+ * S_LOCKED:加锁成功
+ * E_LOCKED:已经有锁
+ * E_ERROR:错误
+ */
+int set_write_lock(rdwr_lock_t *plock , int seconds){
+	return 0;
+}
+
+/*
+ *解写锁
+ *如果写锁已经上锁，则将锁设置为完全解开；
+ *如果读锁上锁则失败（这种情况一般不会出现。出现则是因为逻辑错误）
+ *@return:
+ *S_UNLOCK:解锁成功
+ * E_LOCKED:已经有写锁
+ * E_ERROR:错误
+ */
+int drop_write_lock(rdwr_lock_t *plock){
+	return 0;
+}
+
+/*
+ * 获得最右0的个数也就是最右方bit1的偏移
+ * 比如011000 返回3
+ */
+inline int index_last_1bit(int _il1b_number){
+		u32 _il1b_index = 0;
+		u8 max_bits = sizeof(int) * 8;
+
+		while(_il1b_index<max_bits){
+			/*如果找到bit1则返回*/
+			if((u32)1<<_il1b_index & _il1b_number){
+				break;
+			}
+			_il1b_index++;
+		}
+	return _il1b_index;
 }
