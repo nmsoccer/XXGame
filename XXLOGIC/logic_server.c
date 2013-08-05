@@ -12,7 +12,6 @@
 
 #include "common.h"
 #include "tool.h"
-
 #include "xxmap.h"
 
 #include "XXBUS/xx_bus.h"
@@ -32,6 +31,15 @@ static int handle_req_client(sspackage_t *sspackage);	/*处理客户端数据包
 static int handle_ctrl_msg(runtime_env_t *pruntime_env);	/*处理控制信息，比如重新加载模块、卸载模块等工作*/
 
 static int validate_player(int fd , cspackage_t *cs_data);		/*验证玩家信息*/
+
+
+//static int (* cs_module1_start)(int , int , void *);
+//static int (* cs_module2_start)(int , int , void *);
+//static int (* cs_module3_start)(int , int , void *);
+
+static MODULE_INT cs_module_starts[CS_PROTO_MODULE_COUNT];
+
+
 /*
  * 处理主要游戏逻辑的逻辑服务器进程
  */
@@ -46,6 +54,11 @@ int main(int argc , char **argv){
 	struct sigaction sig_act;	/*信号动作*/
 	int iret;
 	int icount;
+	int i;
+
+	void *handle = NULL;	/*动态加载模块句柄*/
+
+
 
 	/*检测参数*/
 	if(argc < 2){
@@ -109,6 +122,21 @@ int main(int argc , char **argv){
 	}else{
 		write_log(LOG_INFO , "logic_server:attach online_players %x success!" , ponline_players->global_id);
 	}
+
+	/***加载模块*/
+	iret = load_modules(MODULE_TYPE_CS , -1 , cs_module_starts , CS_PROTO_MODULE_COUNT);
+	if(iret < 0)
+	{
+		return -1;
+	}
+//	cs_module1_start(CS , 1 , NULL);
+//	cs_module2_start(1 , 1 , NULL);
+//	cs_module3_start(1 , 1 , NULL);
+	for(i=0; i<CS_PROTO_MODULE_COUNT; i++)
+	{
+		cs_module_starts[i](MODULE_TYPE_CS , NULL , NULL);
+	}
+
 
 	/***start success*/
 	write_log(LOG_INFO , "start logic_server %s success!" , argv[1]);
@@ -238,6 +266,8 @@ static int handle_ctrl_msg(runtime_env_t *pruntime_env){
 
 	return 0;
 }
+
+
 static int validate_player(int client_fd , cspackage_t *cs_data){		/*验证玩家信息*/
 	sspackage_t sspackage;
 	reply_validate_info_t *reply_validate_info;

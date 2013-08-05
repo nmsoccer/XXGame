@@ -10,7 +10,7 @@
 
 
 #include "player_info.h"
-
+#include "XXMODULE/module.h"
 /*每一种协议在客户端都会对应与之相关的两种数据类型 req_xx; reply_xx;原因是客户端发送与接收所需要的消息未必是一致的*/
 
 /**************************CS数据包头文件******************************/
@@ -23,15 +23,19 @@
 
 
 /*
- * proto type
+ * proto type CS主协议号
+ *
+ * 某个协议所在的模块号为:
+ * 协议号 % CS_PROTO_MODULE_SPACE
  */
-#define CS_PROTO_VALIDATE_PLAYER	1	/*验证用户信息*/
+
+#define CS_PROTO_VALIDATE_PLAYER	(CS_PROTO_MODULE_1_BASE + 1)	/*验证用户信息*/
 #define IS_VALIDATE 1
 #define NO_VALIDATE_NOUSR 0	/*不是有效用户*/
 #define NO_VALIDATE_ERRPASS 2	/*密码错误*/
 #define NO_VALIDATE_ERRVERSION 3	/*版本错误*/
 
-#define CS_PROTO_TEST 255		/*测试类型包*/
+#define CS_PROTO_TEST 65530	/*测试类型包*/
 
 ///////////////////////////////////////////各种用户数据包///////////////////////////////////////
 /*验证用户信息数据*/

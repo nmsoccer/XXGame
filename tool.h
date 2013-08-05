@@ -10,6 +10,9 @@
 
 
 #include "common.h"
+#include "XXMODULE/module.h"
+
+
 
 ///////////////////////////////MACRO DEFINE///////////////////////////////
 
@@ -146,6 +149,22 @@ extern int set_write_lock(rdwr_lock_t *plock , int seconds);
  * E_ERROR:错误
  */
 extern int drop_write_lock(rdwr_lock_t *plock);
+
+
+
+/*
+ * 加载模块函数
+ * @type:模块类型
+ * @seq:模块号.如果为-1则表示将module_count全部加载入module_starts中
+ * @module_starts:模块接口数组
+ * @module_count:模块数目
+ * @return:>0:实际加载的模块数目，从0开始
+ *              -1:加载失败
+ */
+int load_modules(int type , int seq , MODULE_INT *module_starts , int module_count);
+
+
+
 
 /*=======================INLINE FUNCTIONS=========================================*/
 /*

@@ -1,7 +1,7 @@
 CC = gcc
 FLAGS = -g -Wall
 INCLUDE = ..
-LIBOBJS = ../tool.o
+LIBOBJS = ../tool.o -ldl
 
 all:create_bus delete_bus
 	echo "set up bus...";

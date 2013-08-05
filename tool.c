@@ -8,7 +8,7 @@
 #include <stdio.h>
 #include <unistd.h>
 #include <fcntl.h>
-
+#include <dlfcn.h>
 
 
 #include <sys/socket.h>
@@ -104,7 +104,7 @@ int write_log(u32 type , ...){
 
 		log_file = fopen(file_path , "a+");
 		if(log_file == NULL){
-			printf("!!write log error!! open %s failed\n" , file_path);
+			printf("!!write log error:%d!! open %s failed\n" , errno , file_path);
 			return -1;
 		}
 //		printf("create log_file!\n");
@@ -435,6 +435,88 @@ int set_write_lock(rdwr_lock_t *plock , int seconds){
 int drop_write_lock(rdwr_lock_t *plock){
 	return 0;
 }
+
+/*
+ * 加载模块函数
+ * @type:模块类型
+ * @seq:模块号.如果为-1则表示将module_count全部加载入module_starts中
+ * @module_starts:模块接口数组
+ * @module_count:模块数目
+ * @return:>0:实际加载的模块数目，从0开始
+ *              -1:加载失败
+ */
+int load_modules(int type , int seq , MODULE_INT *module_starts , int module_count)
+{
+	void *handle = NULL;
+	char head[128] = "\0";
+	char module_path[256] = "\0";
+	char buff[12] = "\0";
+	int i;
+
+	/***根据模块类型写入路径*/
+	switch(type)
+	{
+	case MODULE_TYPE_CS:
+		strcpy(head , "../XXMODULE/cs_module");
+	break;
+	default:
+		return -1;
+	}
+
+
+	/***加载一个模块*/
+	if(seq >= 0)
+	{
+		memcpy(module_path , head , sizeof(head));
+
+		snprintf(buff , sizeof(buff) , "%d" , seq);
+		strcat(buff , ".so");
+		strcat(module_path , buff);
+
+		handle = dlopen(module_path, RTLD_LAZY);
+		if(!handle)
+		{
+			printf("load module %s failed!\n" , module_path);
+			return -1;
+		}
+		module_starts[0] = dlsym(handle , "module_start");
+
+		return 1;
+	}
+
+	/*加载多个模块*/
+	if(seq != -1)
+	{
+		return -1;
+	}
+
+	for(i=0; i<module_count; i++)
+	{
+		memset(module_path , 0 , sizeof(module_path));
+		memset(buff , 0 , sizeof(buff));
+
+		memcpy(module_path , head , sizeof(head));
+
+		snprintf(buff , sizeof(buff) , "%d" , i);
+		strcat(buff , ".so");
+		strcat(module_path , buff);
+
+		handle = dlopen(module_path, RTLD_LAZY);
+		if(!handle)
+		{
+			printf("load module %s failed!\n" , module_path);
+			return -1;
+		}
+		module_starts[i] = dlsym(handle , "module_start");
+
+	}
+
+
+	return module_count;
+}
+
+
+
 
 /*
  * 获得最右0的个数也就是最右方bit1的偏移

@@ -52,7 +52,6 @@ typedef union _ssdata ssdata_t;
 
 struct _sspackage{	/*服务器进程之间的包*/
 	sshead_t sshead;
-//	cspackage_t cs_data;	/*读入或者发送的客户端数据包*/
 	ssdata_t data;
 };
 typedef struct _sspackage sspackage_t;

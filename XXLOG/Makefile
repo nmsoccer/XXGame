@@ -1,6 +1,6 @@
 CC = gcc
 FLAGS = -g -Wall
-LIBOBJS = ../tool.o ../mempoll.o ../XXBUS/xx_bus.o
+LIBOBJS = ../tool.o ../mempoll.o ../XXBUS/xx_bus.o -ldl
 INCLUDE = ..
 
 log_server:log_server.o
