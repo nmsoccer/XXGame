@@ -39,7 +39,8 @@
 
 ///////////////////////////////////////////各种用户数据包///////////////////////////////////////
 /*验证用户信息数据*/
-struct _req_validate_info{
+struct _req_validate_info
+{
 	u8 is_validate;	/*是否通过认证*/
 	u16 proto_type;	/*validate*/
 	char player_name[PLAYER_NAME_LEN];

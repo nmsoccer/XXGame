@@ -56,6 +56,7 @@ int main(int argc , char **argv){
 	int icount;
 	int i;
 
+	module_commond_t module_commond;
 	void *handle = NULL;	/*动态加载模块句柄*/
 
 
@@ -132,9 +133,13 @@ int main(int argc , char **argv){
 //	cs_module1_start(CS , 1 , NULL);
 //	cs_module2_start(1 , 1 , NULL);
 //	cs_module3_start(1 , 1 , NULL);
+
+	module_commond.type = MODULE_COMMOND_RELOAD;
+	module_commond.data.pmodule_dir_path = "../XXMODULE/";
+
 	for(i=0; i<CS_PROTO_MODULE_COUNT; i++)
 	{
-		cs_module_starts[i](MODULE_TYPE_CS , NULL , NULL);
+		cs_module_starts[i](MODULE_TYPE_CS , NULL , &module_commond);
 	}
 
 

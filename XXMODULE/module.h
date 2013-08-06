@@ -32,7 +32,29 @@
 #define CS_PROTO_MODULE_2_BASE	(CS_PROTO_MODULE_1_BASE + CS_PROTO_MODULE_SPACE)	/*模块2*/
 #define CS_PROTO_MODULE_3_BASE	(CS_PROTO_MODULE_2_BASE + CS_PROTO_MODULE_SPACE)	/*模块3*/
 
+//////////////////////DATA STRUCTURE//////////////////////////////
+/*
+ * ##########模块命令字##
+ */
+#define MODULE_COMMOND_RELOAD 1		//重载模块
+#define MODULE_COMMOND_HANDLE 2		//处理协议
 
+
+/*module_commond_data*/
+union _module_commond_data
+{
+	char *pmodule_dir_path;	/*模块所在目录*/
+	void *pdata;
+};
+typedef union _module_commond_data module_commond_data_t;
+
+/*module_commond*/
+struct _module_commond
+{
+	unsigned char type;
+	module_commond_data_t data;
+};
+typedef struct _module_commond module_commond_t;
 
 
 ////////////////////////FUNCTIONS/////////////////////////////
